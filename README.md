@@ -37,7 +37,7 @@ Instalação (passo a passo)
    Abra o PowerShell ou CMD e execute:
    ```bash
    git clone <url-do-repositorio>
-   cd "c:\Users\games\OneDrive\Desktop\sistema malty"
+   cd "c:\Users\games\OneDrive\Desktop\service-management"
    npm install
    ```
 
@@ -139,7 +139,7 @@ Arquivo .env (exemplo)
 Crie um arquivo `.env` na raiz do projeto com estas variáveis:
 
 ```env
-# filepath: c:\Users\games\OneDrive\Desktop\sistema malty\.env
+# filepath: c:\Users\games\OneDrive\Desktop\service-management\.env
 MASTER_USER=admin@exemplo.com
 MASTER_SENHA=senha123
 GOOGLE_AI_API_KEY=Sua_Chave_Google_Generative_AI

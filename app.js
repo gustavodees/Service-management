@@ -11,7 +11,7 @@ const session = require('express-session');
 const sequelize = require('./routes/banco');
 const fs = require('fs'); // <<< ADICIONADO
 const sessionParser = session({
-  secret: 'malty-secret',
+  secret: 'Service-management-secret',
   resave: false,
   saveUninitialized: false
 });
@@ -44,7 +44,7 @@ app.use('/sounds', express.static('sounds'));// Adicionar esta linha para servir
 app.use('/audio', express.static(path.join(__dirname, 'public', 'audio')));
 
 app.use(session({
-  secret: 'malty_secret',
+  secret: 'Service-management-secret',
   resave: false,
   saveUninitialized: true
 }));
