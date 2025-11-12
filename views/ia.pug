@@ -1,0 +1,33 @@
+extends layout
+
+block content
+  include header
+  .container
+    .ia-box
+      h2 Treinamento da IA do ChatBot
+      form#ia-form(method="POST", action="/ia/treinamento")
+        textarea#systemPrompt(name="systemPrompt", rows="20", cols="80" required placeholder="Digite aqui o treinamento da IA...") #{systemPrompt}
+        br
+        button.ia-btn(type="submit") Salvar Treinamento
+
+  script.
+    document.addEventListener('DOMContentLoaded', function() {
+      // Opcional: feedback visual ao salvar
+      const form = document.getElementById('ia-form');
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        fetch('/ia/treinamento', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ systemPrompt: document.getElementById('systemPrompt').value })
+        })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            alert('Treinamento salvo com sucesso!');
+          } else {
+            alert('Erro ao salvar: ' + (data.error || ''));
+          }
+        });
+      });
+    });

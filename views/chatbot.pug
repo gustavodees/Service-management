@@ -1,0 +1,277 @@
+extends layout
+
+block content
+  include header
+  .chatbot-container
+    h1.page-title 
+      i.fa-solid.fa-robot.title-icon
+      | Robô de Automação WhatsApp
+    
+    .connection-status
+      h3 Status da Conexão
+      .status-indicator(class="disconnected")
+        span#status-text Aguardando conexão...
+
+    .qrcode-section
+      h3 Escaneie o QR Code para ativar o Bot
+      .qrcode-container
+        #qrcode-placeholder
+          p Aguardando geração do QR Code...
+    
+    .bot-controls
+      button.action-button.connect-button#connect-btn
+        i.fa-solid.fa-link
+        | Conectar Bot
+      
+      button.action-button.disconnect-button#disconnect-btn
+        i.fa-solid.fa-power-off
+        | Desconectar
+  
+  // estilos para indicador (mesmo comportamento do WhatsApp)
+  style.
+    .connection-status { text-align: center; margin-bottom: 18px; }
+    .qrcode-container { text-align: center; margin-top: 12px; }
+
+    .status-indicator {
+      display: inline-block;
+      padding: 10px 22px;
+      border-radius: 999px;
+      font-weight: 700;
+      white-space: nowrap;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+      transition: background .22s ease, color .22s ease, transform .12s ease;
+      vertical-align: middle;
+      text-align: center;
+    }
+    .status-indicator.connected { background: linear-gradient(90deg,#29d17b,#0ea85a); color: #002800; }
+    .status-indicator.connecting { background: linear-gradient(90deg,#ffec99,#ffd24d); color: #2b2b00; }
+    .status-indicator.error { background: linear-gradient(90deg,#ff8a80,#e53935); color: #fff; }
+    .status-indicator.disconnected { background: linear-gradient(90deg,#d0d6da,#bfc7cc); color:#1b1b1b; }
+
+  script.
+    document.addEventListener('DOMContentLoaded', function() {
+      const statusText = document.getElementById('status-text');
+      const statusIndicator = document.querySelector('.status-indicator');
+      const qrcodePlaceholder = document.getElementById('qrcode-placeholder');
+      const connectBtn = document.getElementById('connect-btn');
+      const disconnectBtn = document.getElementById('disconnect-btn');
+
+      function setStatus(state, text) {
+        if (!statusIndicator) return;
+        statusIndicator.classList.remove('connected','connecting','error','disconnected');
+        statusIndicator.classList.add(state || 'disconnected');
+        if (statusText && typeof text === 'string') statusText.textContent = text;
+      }
+
+      // substitua as atribuições diretas de .className / .textContent por setStatus(...)
+      // Exemplo: no onopen -> setStatus('connecting', 'WebSocket conectado, iniciando bot...')
+      // no caso 'ready' -> setStatus('connected','ChatBot WhatsApp conectado!')
+      // no caso 'qr' -> setStatus('connecting','Gerando QR Code — escaneie com o app')
+      // no caso de erro/disconnect -> setStatus('error', '...') ou setStatus('disconnected','...')
+      
+      let ws = null;
+      let reconnectAttempts = 0;
+      const maxReconnectAttempts = 5;
+      
+      function connectWebSocket() {
+        try {
+          // Conectar ao WebSocket na mesma porta do servidor
+          ws = new WebSocket(`ws://${window.location.hostname}:${window.location.port}/ws-chatbot`);
+          
+          ws.onopen = function() {
+            console.log('WebSocket do chatbot conectado');
+            setStatus('connecting', 'WebSocket conectado, iniciando bot...');
+            reconnectAttempts = 0;
+            
+            // Solicitar conexão automática
+            ws.send(JSON.stringify({ type: 'connect' }));
+          };
+          
+          ws.onmessage = function(event) {
+            try {
+              const data = JSON.parse(event.data);
+              console.log('Dados recebidos:', data);
+              
+              // Atualizar status
+              if (data.status) {
+                statusText.textContent = data.status;
+              }
+              
+              // Atualizar indicador de status baseado no tipo
+              switch (data.type) {
+                case 'status':
+                case 'connecting':
+                  statusIndicator.className = 'status-indicator connecting';
+                  break;
+                case 'ready':
+                  setStatus('connected','ChatBot WhatsApp conectado!');
+                  qrcodePlaceholder.innerHTML = '<p style="color: green; font-size: 18px;">✅ ChatBot WhatsApp conectado! Bot ativo e funcionando.</p>';
+                  connectBtn.disabled = true;
+                  disconnectBtn.disabled = false;
+                  break;
+                case 'authenticated':
+                  statusIndicator.className = 'status-indicator connected';
+                  break;
+                case 'disconnected':
+                case 'auth_failure':
+                  setStatus('disconnected','Aguardando geração do QR Code...');
+                  connectBtn.disabled = false;
+                  disconnectBtn.disabled = true;
+                  break;
+                case 'qr':
+                  if (data.qr) {
+                    // renderiza o <img> sem bordas inline — o CSS do whatsapp (#qrcode-placeholder e #qrcode-placeholder img)
+                    // já aplica tamanho e borda pontilhada; aqui mantemos apenas sombras e radius iguais ao WhatsApp
+                    qrcodePlaceholder.innerHTML = '<img src="' + data.qr + '" alt="QR Code" style="max-width:240px; max-height:240px; height:auto; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,0.5)" />';
+                    statusIndicator.className = 'status-indicator connecting';
+                  }
+                  break;
+                case 'error':
+                  setStatus('error', '❌ Erro na conexão. Tente novamente.');
+                  connectBtn.disabled = false;
+                  disconnectBtn.disabled = true;
+                  break;
+                case 'pong':
+                  // Resposta do ping - conexão ativa
+                  break;
+              }
+            } catch (error) {
+              console.error('Erro ao processar mensagem WebSocket:', error);
+            }
+          };
+          
+          ws.onerror = function(error) {
+            console.error('Erro no WebSocket do chatbot:', error);
+            setStatus('error', 'Erro na conexão WebSocket');
+            connectBtn.disabled = false;
+            disconnectBtn.disabled = true;
+          };
+          
+          ws.onclose = function() {
+            console.log('WebSocket do chatbot desconectado');
+            setStatus('disconnected', 'Conexão WebSocket perdida');
+            connectBtn.disabled = false;
+            disconnectBtn.disabled = true;
+            
+            // Tentar reconectar automaticamente (limitado)
+            if (reconnectAttempts < maxReconnectAttempts) {
+              reconnectAttempts++;
+              statusText.textContent = `Tentando reconectar... (${reconnectAttempts}/${maxReconnectAttempts})`;
+              setTimeout(connectWebSocket, 3000);
+            } else {
+              statusText.textContent = 'Falha na reconexão. Clique em "Conectar Bot" para tentar novamente.';
+              qrcodePlaceholder.innerHTML = '<p style="color: orange;">⚠️ Conexão perdida. Clique em "Conectar Bot" para reconectar.</p>';
+            }
+          };
+        } catch (error) {
+          console.error('Erro ao criar WebSocket:', error);
+          setStatus('error', 'Erro ao conectar WebSocket');
+          connectBtn.disabled = false;
+          disconnectBtn.disabled = true;
+        }
+      }
+      
+      // Configurar botões
+      connectBtn.addEventListener('click', function() {
+        console.log('Botão conectar clicado');
+        reconnectAttempts = 0; // Reset contador
+        
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          qrcodePlaceholder.innerHTML = '<p>Conectando...</p>';
+          connectWebSocket();
+        } else {
+          // Se já estiver conectado, tentar inicializar novamente
+          ws.send(JSON.stringify({ type: 'connect' }));
+        }
+        
+        connectBtn.disabled = true;
+        disconnectBtn.disabled = false;
+      });
+      
+      disconnectBtn.addEventListener('click', function() {
+        console.log('Botão desconectar clicado');
+        
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'disconnect' }));
+        }
+        
+        if (ws) {
+          ws.close();
+          ws = null;
+        }
+        
+        reconnectAttempts = maxReconnectAttempts; // Impedir reconexão automática
+        setStatus('disconnected', 'ChatBot desconectado manualmente');
+        qrcodePlaceholder.innerHTML = '<p>ChatBot desconectado</p>';
+        connectBtn.disabled = false;
+        disconnectBtn.disabled = true;
+      });
+      
+      // Conectar automaticamente ao carregar a página
+      connectWebSocket();
+      
+      // Ping periódico para manter conexão ativa
+      setInterval(function() {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'ping' }));
+        }
+      }, 30000); // A cada 30 segundos
+    });
+  
+  script(src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js")
+
+  script.
+    document.addEventListener('DOMContentLoaded', function() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const deviceIDchatbot = urlParams.get('deviceIDchatbot');
+      if (deviceIDchatbot) {
+        function fetchQRCode() {
+          fetch(`/chatbot/qrcode/${deviceIDchatbot}`)
+            .then(res => res.json())
+            .then(data => {
+              const qrDiv = document.getElementById('qrcode-placeholder');
+              if (data.success && data.qr) {
+                // renderiza o QR como no whatsapp.pug (placeholder estilizado vem do whatsapp.css)
+                qrDiv.innerHTML = `<img src="${data.qr}" alt="QR Code" style="max-width:240px; max-height:240px; height:auto; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,0.5)">`;
+              } else {
+                qrDiv.innerText = 'Aguardando QRCode...';
+              }
+            });
+        }
+        fetchQRCode();
+        setInterval(fetchQRCode, 5000);
+      }
+    });
+  
+  script.
+    (function() {
+      // Poll /chatbot/qrcode/:deviceIDchatbot para detectar isReady e redirecionar
+      function getQueryParam(name) {
+        const params = new URLSearchParams(window.location.search);
+        return params.get(name);
+      }
+      const deviceIDchatbot = getQueryParam('deviceIDchatbot');
+      if (!deviceIDchatbot) return;
+
+      let polling = null;
+      async function checkQr() {
+        try {
+          const res = await fetch('/chatbot/qrcode/' + encodeURIComponent(deviceIDchatbot));
+          const data = await res.json();
+          // quando autenticado/ready -> redireciona para lista de bots
+          if (data && data.isReady) {
+            if (polling) { clearInterval(polling); polling = null; }
+            // redireciona para a listagem de conectores (conectBot)
+            window.location.href = '/conectBot';
+            return;
+          }
+          // opcional: exibir QR na página se data.qr estiver presente (sua UI pode já fazer isso)
+        } catch (e) {
+          console.warn('checkQr erro', e);
+        }
+      }
+
+      // roda imediatamente e depois em intervalos
+      checkQr();
+      polling = setInterval(checkQr, 2000);
+    })();

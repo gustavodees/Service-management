@@ -1,0 +1,40 @@
+extends layout
+
+block content
+  include header
+  .cadastro-centraliza
+    .cadastro-container
+      if success
+        .alert.alert-success
+          | #{success}
+      if error
+        .alert.alert-danger
+          | #{error}
+      h1.page-title
+        i.fa-solid.fa-user-plus.title-icon
+        | Cadastro de Usuário
+
+      form#cadastro-form(action="/cadastro" method="POST")
+        .form-group
+          label(for="nome") Nome:
+          input#nome(type="text" name="nome" required placeholder="Digite o nome completo")
+
+        .form-group
+          label(for="email") E-mail:
+          input#email(type="email" name="email" required placeholder="Digite o e-mail")
+
+        .form-group
+          label(for="senha") Senha:
+          input#senha(type="password" name="senha" required placeholder="Digite a senha" minlength="8")
+
+        .form-group
+          label(for="tipo") Tipo de Usuário:
+          select#tipo(name="tipo" required)
+            option(value="" disabled selected) Selecione o tipo...
+            option(value="admin") Administrador
+            option(value="funcionario") Funcionário
+
+        button.btn-cadastrar(type="submit") Cadastrar
+
+
+    

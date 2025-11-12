@@ -1,0 +1,148 @@
+extends layout
+
+block content
+  include header 
+  .atendimento-container
+    h1.page-title
+      i.fa-solid.fa-headphones.title-icon
+      | Central de Atendimento
+
+    .atendimento-content
+      .conversation-panel
+        h4 Conversas Ativas
+        // Barra de pesquisa de contatos
+        input#search-conversation(type="text" placeholder="Pesquisar contato..." autocomplete="off")
+
+        // Abas: Contatos | Grupos
+        .chat-tabs
+          // Linha para CONTATOS (botão + sino alinhados)
+          .tab-row
+            button#tab-contacts.tab-btn(type="button" class=(currentTab === 'contacts' ? 'active' : ''))
+              i.fa-solid.fa-user
+              |&nbsp;Contatos
+            button#mute-contacts.btn-bell(type="button" title="Silenciar contatos" onclick="window.toggleMuteTab && window.toggleMuteTab('contacts')")
+              i.fa-solid.fa-bell
+          // Linha para GRUPOS (botão + sino alinhados)
+          .tab-row
+            button#tab-groups.tab-btn(type="button" class=(currentTab === 'groups' ? 'active' : ''))
+              i.fa-solid.fa-users
+              |&nbsp;Grupos
+            button#mute-groups.btn-bell(type="button" title="Silenciar grupos" onclick="window.toggleMuteTab && window.toggleMuteTab('groups')")
+              i.fa-solid.fa-bell
+
+        .conversations-list#conversations-list
+          .empty-state
+            i.fa-solid.fa-comments
+            p Nenhuma conversa ativa no momento
+            small Aguardando mensagens dos clientes...
+
+      .chat-panel(style="position: relative;")
+        .chat-header
+          h3#current-chat-title Selecione uma conversa
+        .chat-messages#chat-messages
+          .empty-chat
+            i.fa-solid.fa-comment-dots
+            p Selecione uma conversa para começar o atendimento
+
+        .chat-input-container
+          .message-input-wrapper
+            textarea#message-input(placeholder="Digite sua mensagem...", disabled)
+            .input-actions
+              button.icon-btn#file-clip-btn(disabled title="Enviar arquivo")
+                i.fa-solid.fa-paperclip
+              input#file-input(
+                type="file"
+                accept="image/jpeg,image/png,video/mp4,video/3gpp,video/quicktime,video/3gp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,audio/mp3,audio/mpeg"
+                style="display:none"
+              )
+              button.icon-btn#audio-record-btn(disabled title="Gravar áudio")
+                i.fa-solid.fa-microphone
+              button.icon-btn#send-message-btn(disabled title="Enviar")
+                i.fa-solid.fa-paper-plane
+          // Container dos controles de gravação (inicia oculto)
+          #audio-controls.audio-recording-controls(style="display:none; margin-top:8px; align-items:center; gap:8px;")
+            span Gravando áudio MP3...
+            .recording-timer#recording-timer 00:00
+            .recording-actions
+              button.cancel-recording#cancel-recording
+                i.fa-solid.fa-times
+                span Cancelar
+              button.stop-recording#stop-recording
+                i.fa-solid.fa-stop
+                span Parar
+
+          .quick-responses
+            h3.quick-responses-header(onclick="toggleQuickResponses()") Respostas Rápidas
+            .quick-response-buttons#quick-response-buttons(style="display: none;")
+              button.quick-btn(data-response="dados bancarios")
+                | Certo! Para finalizar a digitação do seu contrato, precisarei dos dados bancários:
+                br
+                br
+                | *Nome do banco:*
+                br
+                | *Agência:*
+                br
+                | *Conta:*
+                br
+                | *Tipo da conta (corrente ou poupança):*
+              button.quick-btn(data-response="verificacao")
+                | Vou iniciar agora a digitação do seu contrato. Assim que o link de formalização for gerado, encaminho pra você, tudo bem?
+              button.quick-btn(data-response="ajuda")
+                | Posso te ajudar com mais alguma coisa?
+              button.quick-btn(data-response="aguardar")
+                | Aguarde um momento, por favor.
+              button.quick-btn(data-response="despedida")
+                | Muito obrigado! Tenha um ótimo dia!
+
+    .tabulacao-section
+      h3 Tabulação
+      // Mostra o número do contato selecionado
+      .contato-selecionado(style="margin-bottom: 10px; font-weight: bold; color: #128C7E; font-size: 1.1rem; margin-left: 2%;")
+        | Contato: 
+        span#contato-numero --
+      // Controle de volume da notificação
+      .notification-volume-control(style="display: flex; flex-direction: row; align-items: center; justify-content: center; width: 100%; margin-bottom: 10px; gap: 10px;")
+        i.fa-solid.fa-bell(style="font-size: 1.2em; color: #333;")
+        input#notification-volume(type="range" min="0" max="100" value="50" style="width: 80%; max-width: 200px;")
+        span#notification-volume-value(style="font-size: 0.95em; min-width: 38px; text-align: right;") 50%
+      .tabulacao-content
+        .campo-obrigatorio
+          label(for="tabulacao-select") Tabulação: *
+          select#tabulacao-select(required)
+            option(value="") Selecione uma opção...
+            option(value="aniversariantes") Aniversariantes
+            option(value="sem-possibilidade") Sem possibilidade de saque
+            option(value="conversa-inativa") Conversa inativa, sem resposta do cliente
+            option(value="mudancas-cadastrais") Mudanças cadastrais
+            option(value="negocio-fechado") Negócio fechado
+            option(value="sem-interesse") Sem interesse na oferta
+
+        // Novo: campo exibido apenas para "Aniversariantes"
+        .campo-opcional#campo-aniversario(style="display:none; margin-top: 10px;")
+          label(for="aniversario-data" style="color:#d32f2f; font-weight:700; display:block; margin-bottom:6px;")
+            | Data do Aniversariante:
+          input#aniversario-data(
+            type="date"
+            style="width:100%; padding:8px; border-radius:6px; border:2px solid #e53935;"
+          )
+
+        .campo-opcional
+          label(for="detalhes-conversa") Detalhes da conversa:
+          textarea#detalhes-conversa(placeholder="Digite os detalhes da conversa...")
+
+        .campo-opcional
+          label(for="observacoes-tab") Observações:
+          textarea#observacoes-tab(placeholder="Digite suas observações...")
+
+      button.btn-tabular-conversa#btn-tabular(disabled) TABULAR
+
+  // Bibliotecas necessárias para conversão MP3
+  script(src="https://cdn.jsdelivr.net/npm/lamejs@1.2.0/lame.min.js")
+  script(src="/javascripts/audio-utils.js")
+  script(src="/javascripts/video-utils.js")
+  script(src="/javascripts/atendimento-ws.js" defer)
+  script.
+    function toggleQuickResponses() {
+      const buttons = document.getElementById('quick-response-buttons');
+      buttons.style.display = buttons.style.display === 'none' ? 'block' : 'none';
+    }

@@ -1,0 +1,77 @@
+extends layout
+
+block content
+  include header
+
+  // container do gráfico
+  .grafico-page
+    h1.page-title 
+      i.icon.fas.fa-chart-bar
+      | Gráfico da Tabulação
+    .grafico-card
+      // cabeçalho com título + select (aparece só para admin)
+      .grafico-header(style="display:flex; align-items:center; justify-content:space-between; gap:12px;")
+        h1.titulo-grafico Gráfico da Tabulação
+        if typeof usuarioTipo !== 'undefined' && usuarioTipo === 'admin'
+          // select para escolher "Meu usuário" ou "Equipe"
+          label(for="graficoScope" style="display:flex;align-items:center;gap:8px;color:#222;margin:0;")
+            select#graficoScope(name="graficoScope")
+              // opção para ver o gráfico do próprio usuário (usa usuarioId e usuarioNome passados pelo servidor)
+              option(value="/users/grafico/" + (typeof usuarioId !== 'undefined' ? usuarioId : '')) #{typeof usuarioNome !== 'undefined' ? usuarioNome : 'Meu usuário'}
+              // opção para ver o agregado da equipe
+              option(value="/users/grafico") Equipe
+
+      .grafico-row
+        canvas#graficoPizza(width="600" height="400")
+        .grafico-legend#graficoLegend
+      .grafico-empty#graficoEmpty(style="display:none;") Nenhum dado de tabulação disponível.
+
+  // incluir css e scripts específicos
+  script(src="https://cdn.jsdelivr.net/npm/chart.js")
+  // expose small context for grafico.js and bind select change
+  script.
+    // variáveis expostas para o script do gráfico
+    window.__usuarioTipo = !{JSON.stringify(typeof usuarioTipo !== 'undefined' ? usuarioTipo : null)};
+    window.__usuarioId = !{JSON.stringify(typeof usuarioId !== 'undefined' ? usuarioId : null)};
+    window.__impersonating = !{JSON.stringify(typeof impersonating !== 'undefined' ? (impersonating || null) : null)};
+    window.__usuarioNome = !{JSON.stringify(typeof usuarioNome !== 'undefined' ? usuarioNome : null)};
+
+    document.addEventListener('DOMContentLoaded', function() {
+      const sel = document.getElementById('graficoScope');
+      const storedNameKey = '__grafico_usuarioNome';
+      // guarda nome vindo do servidor (se houver)
+      if (window.__usuarioNome) {
+        try { localStorage.setItem(storedNameKey, window.__usuarioNome); } catch (e) {}
+      }
+      // decide nome a mostrar: servidor > localStorage > fallback
+      const nomeUsuarioExibido = window.__usuarioNome || (function(){ try { return localStorage.getItem(storedNameKey); } catch(e){ return null; } })() || 'Meu usuário';
+
+      if (sel) {
+        // atualiza texto da option "meu usuário" para sempre mostrar o nome salvo
+        for (const opt of sel.options) {
+          if (opt.value && opt.value.startsWith('/users/grafico/') && opt.value !== '/users/grafico') {
+            opt.textContent = nomeUsuarioExibido;
+          }
+        }
+
+        sel.addEventListener('change', function() {
+          const v = sel.value;
+          if (v) window.location.href = v;
+        });
+        // sincroniza seleção atual com a URL (quando já está em /users/grafico/:id ou /users/grafico)
+        try {
+          const path = window.location.pathname;
+          if (path.startsWith('/users/grafico/')) {
+            const id = path.split('/').pop();
+            for (const opt of sel.options) {
+              if (opt.value.endsWith('/' + id)) opt.selected = true;
+            }
+          } else if (path === '/users/grafico') {
+            for (const opt of sel.options) {
+              if (opt.value === '/users/grafico') opt.selected = true;
+            }
+          }
+        } catch (e) {}
+      }
+    });
+  script(src="/javascripts/grafico.js")

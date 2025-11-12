@@ -1,0 +1,104 @@
+extends layout
+
+block content
+  include header
+  .conectacao-zap
+    h1.page-title 
+      i.fa-brands.fa-whatsapp.title-icon
+      | Conectar WhatsApp
+
+    .zap-list#zap-list
+      // Aqui vão os cartões de conexões
+
+    a#add-zap-btn(href="javascript:void(0)" style=" display:inline-block; cursor:pointer;")
+      i.fa-solid.fa-square-plus.title-icon
+
+  script.
+    document.addEventListener('DOMContentLoaded', function() {
+      const zapList = document.getElementById('zap-list');
+      const addBtn = document.getElementById('add-zap-btn');
+
+      let devicesCache = [];
+      function renderDevices(devices) {
+        devicesCache = devices || devicesCache;
+        zapList.innerHTML = '';
+        devices.forEach(device => {
+          const div = document.createElement('div');
+          div.className = 'zap-status-box';
+          div.style = 'display:inline-block; margin:8px; padding:10px 20px; border-radius:8px; background:#f8f9fa; border:1px solid #25d366; color:#222; font-weight:600; font-size:1rem; vertical-align:middle;';
+          div.innerHTML = `
+            <div>
+              <span>WhatsApp: <b>${device.number ? device.number : '<span style="font-family:monospace;color:#666">' + device.deviceId + '</span>'}</b></span>
+            </div>
+            <div style="margin: 6px 0 10px 0;">
+              <span>Status: <b style="color:${device.isReady ? '#128c7e' : '#dc3545'}">${device.isReady ? 'conectado' : 'conectando...'}</b></span>
+            </div>
+            <button onclick="window.open('/whatsapp?deviceId=${device.deviceId}', '_self')" style="margin-right:10px;">Abrir</button>
+            <button onclick="removerZap('${device.deviceId}')" style="color:#fff; background:#dc3545; border:none; border-radius:4px; padding:4px 10px; cursor:pointer;">Remover</button>
+          `;
+          zapList.appendChild(div);
+        });
+      }
+
+      function fetchDevices() {
+        fetch('/whatsapp/all-status')
+          .then(res => res.json())
+          .then(data => {
+            if (data.success) renderDevices(data.devices);
+          });
+      }
+
+      // WebSocket listener to update device number/status in real-time
+      (function setupWs() {
+        const wsUrl = `ws://${window.location.hostname}:${window.location.port}/ws-atendimento`;
+        let ws = null;
+        try { ws = new WebSocket(wsUrl); } catch (e) { ws = null; }
+        if (!ws) return;
+        ws.onopen = function() {
+          // nothing to send; this socket will receive user-scoped broadcasts
+        };
+        ws.onmessage = function(ev) {
+          try {
+            const data = JSON.parse(ev.data || '{}');
+            if (!data || !data.type) return;
+            if (data.type === 'whatsapp-connected' && data.deviceId) {
+              // update local cache and re-render quickly
+              const idx = devicesCache.findIndex(d => String(d.deviceId) === String(data.deviceId));
+              if (idx !== -1) {
+                devicesCache[idx].number = data.number || devicesCache[idx].number || null;
+                devicesCache[idx].isReady = true;
+                renderDevices(devicesCache);
+              } else {
+                // if not present, refresh full list
+                fetchDevices();
+              }
+            }
+          } catch (e) { console.warn('ws parse error conectZap', e); }
+        };
+        ws.onerror = function() { /* ignore */ };
+      })();
+
+      addBtn.onclick = function() {
+        // Limpa o deviceId para forçar nova conexão
+        localStorage.removeItem('currentDeviceId');
+        window.location.href = '/whatsapp'; // Agora abre na mesma aba
+      };
+
+      fetchDevices();
+      setInterval(fetchDevices, 5000); // Atualiza a lista a cada 5s
+    });
+
+    window.removerZap = function(deviceId) {
+      if (confirm('Deseja remover esta conexão do WhatsApp?')) {
+        fetch(`/whatsapp/remove-device?deviceId=${deviceId}`, { method: 'DELETE' })
+          .then(res => res.json())
+          .then(data => {
+            if (data.success) {
+              alert('Conexão removida com sucesso!');
+              fetchDevices(); // Atualiza a lista sem reload
+            } else {
+              alert('Erro ao remover: ' + (data.message || ''));
+            }
+          });
+      }
+    };

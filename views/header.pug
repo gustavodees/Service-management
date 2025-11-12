@@ -1,0 +1,41 @@
+header(class="sidebar-menu")
+  .sidebar-content
+    .logo-container
+      img(src="/images/logo.png", alt="MALTY")
+    nav.sidebar-nav
+      ul.nav-icons
+        //- Menus comuns a todos
+        li.nav-item
+          a(href="/conectZap", title="Adicionar WhatsApp")
+            i.icon.fa-brands.fa-whatsapp
+        li.nav-item
+          a(href="/conectBot", title="Robo de Automação para o Whatsapp")
+            i.icon.fa-solid.fa-robot
+        li.nav-item
+          a(href="/users/desparar", title="Disparo de Mensagens")
+            i.icon.fa-solid.fa-plane-departure
+        li.nav-item
+          a(href="/users/atendimento", title="Central de Atendimento")
+            i.icon.fa-solid.fa-headphones
+        li.nav-item
+          a(href="/users/tabulacao", title="Tabulação de Mensagens")
+            i.icon.fa-solid.fa-calendar-days
+        li.nav-item
+          a(href="/users/grafico", title="Gráfico da Tabulação")
+            i.icon.fas.fa-chart-bar
+        //- Menus só para admin (exibir somente se usuarioTipo for 'admin')
+        if typeof usuarioTipo !== 'undefined' && usuarioTipo === 'admin'
+          li.nav-item
+            a(href="/cadastro", title="Cadastro de Usuário")
+              i.icon.fa-solid.fa-user-plus
+          li.nav-item
+            a(href="/usuariocadastrado", title="Usuários Cadastrados")
+              i.icon.fa-solid.fa-circle-user
+          li.nav-item
+            a(href="/ia", title="Treinamento da IA")
+              i.icon.fa-solid.fa-diagram-project
+
+    // ícone fixado ao final do header/sidebar
+    .share-fixed
+      a.share-btn(href="/" title="Voltar para o Login")
+        i.fa-solid.fa-share-from-square

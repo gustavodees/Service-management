@@ -1,0 +1,76 @@
+extends layout
+
+block content
+  include header
+  .conectacao-bot
+    h1.page-title 
+      i.fa-solid.fa-robot.title-icon
+      | Conectar ChatBot
+
+    .bot-list#bot-list
+      // Aqui vão os cartões de conexões
+
+    a#add-bot-btn(href="javascript:void(0)" style="margin-top:20px; display:inline-block; cursor:pointer;") 
+      i.fa-solid.fa-square-plus.title-icon
+
+  script.
+    document.addEventListener('DOMContentLoaded', function() {
+      const botList = document.getElementById('bot-list');
+      const addBtn = document.getElementById('add-bot-btn');
+
+      function renderBots(bots) {
+        botList.innerHTML = '';
+        bots.forEach(bot => {
+          const div = document.createElement('div');
+          div.className = 'zap-status-box';
+          div.style = 'display:inline-block; margin:8px; padding:10px 20px; border-radius:8px; background:#f8f9fa; border:1px solid #25d366; color:#222; font-weight:600; font-size:1rem; vertical-align:middle;';
+          div.innerHTML = `
+            <div>
+              <span>ChatBot: <b>${bot.number ? bot.number : '<span style="font-family:monospace;color:#666">' + bot.deviceIDchatbot + '</span>'}</b></span>
+            </div>
+            <div style="margin: 6px 0 10px 0;">
+              <span>Status: <b style="color:${bot.isReady ? '#128c7e' : '#dc3545'}">${bot.isReady ? 'conectado' : 'conectando...'}</b></span>
+            </div>
+            <button onclick="window.location.href='/chatbot?deviceIDchatbot=${bot.deviceIDchatbot}'" style="margin-right:10px;">Abrir</button>
+            <button onclick="removerBot('${bot.deviceIDchatbot}')" style="color:#fff; background:#dc3545; border:none; border-radius:4px; padding:4px 10px; cursor:pointer;">Remover</button>
+          `;
+          botList.appendChild(div);
+        });
+      }
+
+      function fetchBots() {
+        fetch('/chatbot/all-status')
+          .then(res => res.json())
+          .then(data => {
+            if (data.success) renderBots(data.bots);
+          });
+      }
+
+      addBtn.onclick = async function() {
+        const res = await fetch('/chatbot/create-connection', { method: 'POST' });
+        const data = await res.json();
+        if (data.success && data.deviceIDchatbot) {
+          window.location.href = `/chatbot?deviceIDchatbot=${data.deviceIDchatbot}`; // abre na mesma aba
+        } else {
+          alert('Erro ao criar conexão!');
+        }
+      };
+
+      fetchBots();
+      setInterval(fetchBots, 5000); // Atualiza a lista a cada 5s
+    });
+
+    window.removerBot = function(deviceIDchatbot) {
+      if (confirm('Deseja remover esta conexão do ChatBot?')) {
+        fetch(`/chatbot/remove-device?deviceIDchatbot=${deviceIDchatbot}`, { method: 'DELETE' })
+          .then(res => res.json())
+          .then(data => {
+            if (data.success) {
+              alert('Conexão removida com sucesso!');
+              fetchBots(); // Atualiza a lista sem reload
+            } else {
+              alert('Erro ao remover: ' + (data.message || ''));
+            }
+          });
+      }
+    };

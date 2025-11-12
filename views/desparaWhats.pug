@@ -1,0 +1,297 @@
+extends layout
+
+block content
+  include header
+  .desparo-container
+    h1.page-title 
+      i.fa-solid.fa-plane-departure.title-icon
+      | Disparo de Mensagens WhatsApp
+    
+    .desparo-form-container
+      form.desparo-form#desparo-form
+        .form-section
+          h2 Lista de Números
+          .form-group
+            label(for="numeros") Números de WhatsApp (um por linha):
+            textarea#numeros(name="numeros", placeholder="5511999999999\n5511888888888\n...", rows="10", required)
+            small.help-text Digite um número por linha, incluindo o código do país (55) e DDD
+        
+        .form-section
+          h2 Mensagem
+          .form-group
+            label(for="mensagem") Texto da Mensagem:
+            textarea#mensagem(name="mensagem", placeholder="Digite sua mensagem aqui...", rows="8", required)
+            small.help-text A mensagem será enviada para todos os números da lista
+        
+        .form-actions
+          button.action-button.send-button#send-btn(type="submit")
+            i.fa-solid.fa-paper-plane
+            | Enviar Mensagens
+          
+          button.action-button.clear-button#clear-btn(type="button")
+            i.fa-solid.fa-eraser
+            | Limpar Campos
+    
+    .results-container#results-container(style="display: none;")
+      h2 Resultado do Disparo
+      .results-content#results-content
+    
+    .desparo-info
+      h3 Instruções:
+      ul
+        li Digite os números no formato internacional (5511999999999)
+        li Um número por linha
+        li Verifique se o WhatsApp está conectado na página principal
+        li A mensagem será enviada para todos os números válidos da lista
+        li Aguarde o processamento completo antes de fazer outro disparo
+  
+  script.
+    document.addEventListener('DOMContentLoaded', function() {
+      const form = document.getElementById('desparo-form');
+      const sendBtn = document.getElementById('send-btn');
+      const clearBtn = document.getElementById('clear-btn');
+      const resultsContainer = document.getElementById('results-container');
+      const resultsContent = document.getElementById('results-content');
+
+      async function fetchUserDevices() {
+        try {
+          // busca devices do módulo "whatsapp"
+          const [res1, res2] = await Promise.allSettled([
+            fetch('/whatsapp/all-status'),
+            fetch('/chatbot/all-status')
+          ]);
+
+          const devices = [];
+
+          if (res1.status === 'fulfilled') {
+            try {
+              const data1 = await res1.value.json();
+              if (data1 && data1.success) {
+                (data1.devices || []).forEach(d => {
+                  devices.push({
+                    deviceId: d.deviceId || d.id || '',
+                    number: d.number || d.numberFormatted || null,
+                    isReady: !!d.isReady || !!d.isClientReady,
+                    source: 'whatsapp',
+                    meta: d
+                  });
+                });
+              }
+            } catch(e) {}
+          }
+
+          if (res2.status === 'fulfilled') {
+            try {
+              const data2 = await res2.value.json();
+              if (data2 && data2.success) {
+                (data2.bots || []).forEach(b => {
+                  devices.push({
+                    deviceId: b.deviceIDchatbot || b.deviceId || '',
+                    number: b.number || b.numberFormatted || null,
+                    isReady: !!b.isReady || !!b.isClientReady,
+                    source: 'chatbot',
+                    meta: b
+                  });
+                });
+              }
+            } catch(e) {}
+          }
+
+          // filtra apenas prontos
+          return devices.filter(d => d.isReady);
+        } catch (e) {
+          console.error('Falha ao carregar devices:', e);
+          return [];
+        }
+      }
+
+      function openDevicePickerModal(devices) {
+        return new Promise((resolve) => {
+          const overlay = document.createElement('div');
+          overlay.style.cssText = `
+            position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+            display: flex; align-items: center; justify-content: center; z-index: 9999;
+          `;
+
+          const box = document.createElement('div');
+          box.style.cssText = `
+            background: #fff; padding: 16px; border-radius: 8px; width: 420px; max-width: 90%;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.25); font-family: Arial, sans-serif;
+          `;
+
+          box.innerHTML = `
+            <style>
+              .device-list { max-height: 260px; overflow:auto; margin-top:10px; padding:6px 0; }
+              .device-row { display:flex; align-items:center; gap:10px; padding:8px; border-radius:6px; cursor:pointer; margin-bottom:6px; border:1px solid #eee; }
+              .device-row:hover { background:#f5f5f5; }
+              .device-row.selected { background:#e8f8f2; border-color:#25D366; }
+              .source-icon { font-size:16px; display:inline-flex; align-items:center; justify-content:center; width:20px; margin-right:6px; }
+              .source-icon.whatsapp { color: #25D366; }
+              .source-icon.chatbot { color: #1e88e5; }
+              .device-label { flex:1; font-size:14px; color:#333; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+              .device-time { color:#888; font-size:12px; margin-left:8px; white-space:nowrap; }
+            </style>
+            <h3 style="margin:0 0 10px 0; color:#128C7E;">Escolha o WhatsApp / ChatBot</h3>
+            <p style="margin:0 0 10px 0; color:#333;">Selecione o número pelo qual deseja enviar o disparo:</p>
+            <div id="device-list" class="device-list"></div>
+            <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:14px;">
+              <button id="cancel-device-picker" style="padding:6px 10px; border-radius:6px; background:#ccc; border:none; cursor:pointer;">Cancelar</button>
+              <button id="confirm-device-picker" style="padding:6px 10px; border-radius:6px; background:#25d366; color:#fff; border:none; cursor:pointer;">Usar este</button>
+            </div>
+          `;
+
+          overlay.appendChild(box);
+          document.body.appendChild(overlay);
+
+          const list = box.querySelector('#device-list');
+
+          devices.forEach((d, i) => {
+            // formato horário apenas (HH:MM:SS) se existir lastMassSend
+            let timeText = '';
+            try {
+              const raw = (d.meta && d.meta.lastMassSend) ? d.meta.lastMassSend : null;
+              if (raw) {
+                const dt = new Date(raw);
+                if (!isNaN(dt)) {
+                  timeText = ' ' + dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                }
+              }
+            } catch (e) { timeText = ''; }
+
+            const labelText = `${d.number || '(sem número)'}`;
+            const iconClass = (d.source === 'chatbot') ? 'source-icon chatbot fa-solid fa-robot' : 'source-icon whatsapp fa-brands fa-whatsapp';
+
+            const row = document.createElement('div');
+            row.className = 'device-row' + (i === 0 ? ' selected' : '');
+            row.dataset.value = `${d.source}:${d.deviceId}`;
+            row.innerHTML = `
+              <i class="${iconClass}" aria-hidden="true"></i>
+              <div class="device-label">${labelText}</div>
+              <div class="device-time">${timeText ? timeText : ''}</div>
+              <input type="radio" name="device-radio" style="margin-left:8px;" ${i === 0 ? 'checked' : ''} />
+            `;
+            row.addEventListener('click', () => {
+              box.querySelectorAll('.device-row').forEach(r => r.classList.remove('selected'));
+              row.classList.add('selected');
+              box.querySelectorAll('input[name="device-radio"]').forEach(inp => inp.removeAttribute('checked'));
+              row.querySelector('input[name="device-radio"]').setAttribute('checked', 'checked');
+            });
+            list.appendChild(row);
+          });
+
+          const btnOk = box.querySelector('#confirm-device-picker');
+          const btnCancel = box.querySelector('#cancel-device-picker');
+
+          const cleanup = () => document.body.removeChild(overlay);
+
+          btnCancel.onclick = () => { cleanup(); resolve(null); };
+          btnOk.onclick = () => {
+            const sel = box.querySelector('.device-row.selected');
+            const v = sel ? sel.dataset.value : null;
+            cleanup();
+            resolve(v || null);
+          };
+          overlay.onclick = (e) => { if (e.target === overlay) { cleanup(); resolve(null); } };
+        });
+      }
+
+      async function pickDeviceId() {
+        const devices = await fetchUserDevices();
+        if (!devices.length) {
+          alert('Nenhum WhatsApp/ChatBot conectado. Conecte um número antes de enviar.');
+          return null;
+        }
+        if (devices.length === 1) {
+          return `${devices[0].source}:${devices[0].deviceId}`;
+        }
+        return await openDevicePickerModal(devices);
+      }
+
+      form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const formData = new FormData(form);
+        const numeros = formData.get('numeros');
+        const mensagem = formData.get('mensagem');
+
+        if (!numeros || !mensagem) {
+          alert('Por favor, preencha todos os campos');
+          return;
+        }
+
+        // Selecionar device
+        sendBtn.disabled = true;
+        sendBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Validando dispositivos...';
+
+        const deviceId = await pickDeviceId();
+        if (!deviceId) {
+          sendBtn.disabled = false;
+          sendBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Enviar Mensagens';
+          return;
+        }
+
+        // Enviar dados para o servidor com o deviceId escolhido (inclui prefixo source)
+        sendBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Enviando...';
+
+        fetch('/users/desparar/enviar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ numeros, mensagem, deviceId })
+        })
+        .then(response => response.json())
+        .then(data => {
+          resultsContainer.style.display = 'block';
+
+          // Monta lista detalhada de resultados com hora do envio (se houver)
+          let html = '';
+          if (Array.isArray(data.results) && data.results.length) {
+            html += '<h3>Detalhes por número</h3>';
+            html += '<table style="width:100%; border-collapse:collapse;">';
+            html += '<thead><tr style="text-align:left; border-bottom:1px solid #ddd;"><th>Número</th><th>ChatId</th><th>Status</th><th>Hora do disparo</th></tr></thead>';
+            html += '<tbody>';
+            data.results.forEach(r => {
+              const timeStr = r.timestamp ? (new Date(r.timestamp)).toLocaleString('pt-BR') : '-';
+              const statusLabel = r.status === 'sent' ? '<span style="color:green;font-weight:700;">Enviado</span>' :
+                                  r.status === 'not_whatsapp' ? '<span style="color:#d32f2f;">Sem WhatsApp</span>' :
+                                  r.status === 'error' ? `<span style="color:#d32f2f;">Erro</span>` : r.status;
+              html += `<tr style="border-bottom:1px solid #f1f1f1;"><td style="padding:6px 0;">${r.number}</td><td style="padding:6px 0;">${r.chatId || '-'}</td><td style="padding:6px 0;">${statusLabel}</td><td style="padding:6px 0;">${timeStr}</td></tr>`;
+            });
+            html += '</tbody></table>';
+          } else {
+            html += '<p>Nenhum detalhe disponível.</p>';
+          }
+
+          // Resumo
+          html += '<div style="margin-top:12px;">';
+          html += `<strong>Total enviados:</strong> ${data.total || 0} &nbsp;&nbsp; `;
+          html += `<strong>Ignorados:</strong> ${data.skipped || 0} &nbsp;&nbsp; `;
+          html += `<strong>Inválidos:</strong> ${(data.invalidNumbers && data.invalidNumbers.length) ? data.invalidNumbers.length : 0}`;
+          html += '</div>';
+
+          resultsContent.innerHTML = html;
+          resultsContainer.scrollIntoView({ behavior: 'smooth' });
+        })
+        .catch(error => {
+          console.error('Erro:', error);
+          resultsContainer.style.display = 'block';
+          resultsContent.innerHTML = `
+            <div class="result-error">
+              <i class="fa-solid fa-exclamation-triangle"></i>
+              <h3>Erro no Disparo</h3>
+              <p>Ocorreu um erro ao enviar as mensagens. Tente novamente.</p>
+            </div>
+          `;
+        })
+        .finally(() => {
+          sendBtn.disabled = false;
+          sendBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Enviar Mensagens';
+        });
+      });
+
+      clearBtn.addEventListener('click', function() {
+        if (confirm('Tem certeza que deseja limpar todos os campos?')) {
+          form.reset();
+          resultsContainer.style.display = 'none';
+        }
+      });
+    });

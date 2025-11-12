@@ -1,0 +1,37 @@
+extends layout
+
+block content
+  include header
+  .container-tabulacao
+    h3.titulo-tabulacao Tabulação de clientes
+    
+    .botoes-status
+      button.btn-status.aniversariantes(data-status="aniversariantes") Aniversariantes
+      button.btn-status.sem-possibilidade(data-status="sem-possibilidade") Sem possibilidade de saque
+      button.btn-status.conversa-inativa(data-status="conversa-inativa") Conversa inativa, sem resposta do cliente
+      button.btn-status.mudancas-cadastrais(data-status="mudancas-cadastrais") Mudanças cadastrais
+      button.btn-status.negocio-fechado(data-status="negocio-fechado") Negócio fechado
+      button.btn-status.sem-interesse(data-status="sem-interesse") Sem interesse na oferta
+
+    // Novo: filtro de mês (aparece apenas quando "Aniversariantes" está ativo)
+    .filtro-aniversariantes(style="display:none; margin:10px 0;")
+      label(for="mes-aniversariantes" style="margin-right:8px; font-weight:600;") Filtrar por mês:
+      input#mes-aniversariantes(type="month" style="padding:6px; border:1px solid #ccc; border-radius:6px;")
+
+    // Novo: botão Exportar Excel
+    .exportar-area(style="margin:10px 0;")
+      button#btn-export-excel(type="button" style="padding:8px 12px; border:none; background:#2e7d32; color:#fff; border-radius:6px; cursor:pointer;")
+        i.fa-solid.fa-file-excel(style="margin-right:6px;")
+        | Exportar Excel
+
+    .tabulacao-lista(data-status="aniversariantes")
+    .tabulacao-lista(data-status="sem-possibilidade")
+    .tabulacao-lista(data-status="conversa-inativa")
+    .tabulacao-lista(data-status="mudancas-cadastrais")
+    .tabulacao-lista(data-status="negocio-fechado")
+    .tabulacao-lista(data-status="sem-interesse")
+  
+  // Biblioteca para gerar XLSX
+  script(src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js")
+  script(src="/javascripts/tabulacao.js")
+

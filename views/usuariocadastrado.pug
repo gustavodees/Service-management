@@ -1,0 +1,251 @@
+extends layout
+
+block content
+  include header
+  link(rel="stylesheet" href="/stylesheets/usuarioCadastrado.css")
+  
+  .usuario 
+    h1.page-title 
+      i.icon.fa-solid.fa-circle-user
+      | Usuários Cadastrados
+
+    if error
+      .alert.alert-danger
+        | #{error}
+
+    if success
+      .alert.alert-success
+        | #{success}
+
+    if usuarios && usuarios.length > 0
+      .usuarios-lista
+        .usuarios-header
+          .nome-column Nome
+          .data-column Data de Cadastro
+          .acoes-column Ações
+
+        // nova barra de pesquisa
+        .usuarios-search
+          input#usuarioSearch(type="text" placeholder="Pesquisar por nome..." aria-label="Pesquisar usuários")
+          button#clearSearch.btn-clear(type="button" title="Limpar pesquisa") Limpar
+          span#searchCount
+
+        each usuario in usuarios
+          .usuario-item
+            .nome-column 
+              span.nome-usuario #{usuario.nome}
+              span.tipo-usuario(class=usuario.tipo === 'admin' ? 'admin' : 'funcionario')
+                | #{usuario.tipo === 'admin' ? 'Admin' : 'Funcionário'}
+            .data-column #{new Date(usuario.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+
+            .acoes-column
+              .botoes-acoes
+                button.btn-tabulacao(data-user-id=usuario.id title="Tabulação")
+                  i.icon.fa-solid.fa-calendar-days
+                  span Tabulação
+                button.btn-grafico(data-user-id=usuario.id title="Gráfico")
+                  i.icon.fas.fa-chart-bar
+                  span Gráfico
+                button.btn-atendimento(data-user-id=usuario.id title="Atendimento")
+                  i.fa-solid.fa-headphones
+                  span Atendimento
+                - if (usuarioTipo === 'admin')
+                  button.btn-deletar(data-user-id=usuario.id data-user-name=usuario.nome title="Deletar Usuário")
+                    i.fa-solid.fa-trash
+                    span Deletar
+    else
+      .empty-state
+        i.fa-solid.fa-users(style="font-size: 3rem; color: #ccc; margin-bottom: 1rem;")
+        p Nenhum usuário cadastrado ainda
+        small Cadastre o primeiro usuário para vê-lo aqui
+
+  script.
+    document.addEventListener('DOMContentLoaded', function() {
+      console.log('=== DEBUG: VERIFICANDO BOTÕES DELETAR ===');
+      const btnsDeletar = document.querySelectorAll('.btn-deletar');
+      console.log('Quantidade de botões deletar encontrados:', btnsDeletar.length);
+      
+      btnsDeletar.forEach((btn, index) => {
+        console.log(`Botão ${index}:`, {
+          element: btn,
+          userIdAttr: btn.getAttribute('data-user-id'),
+          userNameAttr: btn.getAttribute('data-user-name'),
+          allAttributes: btn.attributes,
+          dataset: btn.dataset
+        });
+      });
+      
+      // Botões de Tabulação
+      document.querySelectorAll('.btn-tabulacao').forEach(btn => {
+        btn.addEventListener('click', function() {
+          const userId = this.getAttribute('data-user-id');
+          var isAdmin = '#{usuarioTipo}' === 'admin';
+          if (isAdmin) {
+            // Admin acessa a tabulação do funcionário selecionado
+            window.location.href = '/users/tabulacao/' + userId;
+          } else {
+            // Funcionário acessa sua própria tabulação
+            window.location.href = '/users/tabulacao';
+          }
+        });
+      });
+
+      // Botões de Gráfico
+      document.querySelectorAll('.btn-grafico').forEach(btn => {
+        btn.addEventListener('click', function() {
+          const userId = this.getAttribute('data-user-id');
+          var isAdmin = '#{usuarioTipo}' === 'admin';
+          if (isAdmin) {
+            // Admin acessa o gráfico do usuário selecionado
+            window.location.href = '/users/grafico/' + userId;
+          } else {
+            // Funcionário acessa seu próprio gráfico
+            window.location.href = '/users/grafico';
+          }
+        });
+      });
+
+      // Botões de Atendimento
+      document.querySelectorAll('.btn-atendimento').forEach(btn => {
+        btn.addEventListener('click', function() {
+          const userId = this.getAttribute('data-user-id');
+          var isAdmin = '#{usuarioTipo}' === 'admin';
+          if (isAdmin) {
+            // Admin acessa o atendimento do funcionário selecionado
+            window.location.href = '/users/atendimento/' + userId;
+          } else {
+            // Funcionário acessa seu próprio atendimento
+            window.location.href = '/users/atendimento';
+          }
+        });
+      });
+
+      // Botões de Deletar
+      document.querySelectorAll('.btn-deletar').forEach(btn => {
+        btn.addEventListener('click', function() {
+          const userId = this.getAttribute('data-user-id');
+          const userName = this.getAttribute('data-user-name');
+          
+          console.log('=== INICIANDO PROCESSO DE DELETAR USUÁRIO ===');
+          console.log('Tentando deletar usuário:', { userId, userName });
+          console.log('Tipo do userId:', typeof userId);
+          console.log('Valor do userId:', userId);
+          console.log('Element:', this);
+          console.log('All data attributes:', this.dataset);
+          console.log('data-user-id attribute:', this.getAttribute('data-user-id'));
+          
+          // Verificar se o userId está presente
+          if (!userId || userId === 'null' || userId === 'undefined' || userId === '') {
+            console.error('ERRO: userId não encontrado!');
+            console.error('Atributos do elemento:', Array.from(this.attributes).map(attr => ({name: attr.name, value: attr.value})));
+            alert('Erro: ID do usuário não encontrado. Recarregue a página e tente novamente.');
+            return;
+          }
+          
+          if (confirm(`⚠️ ATENÇÃO!\n\nTem certeza que deseja deletar o usuário "${userName}"?\n\nEsta ação é IRREVERSÍVEL e não pode ser desfeita!`)) {
+            
+            this.disabled = true;
+            this.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> <span>Deletando...</span>';
+            
+            // rota do router users.js (normalmente montado em /users)
+            const url = `/users/deletar-usuario/${userId}`;
+            console.log('=== DETALHES DA REQUISIÇÃO ===');
+            console.log('URL da requisição:', url);
+            console.log('Método HTTP: DELETE');
+            console.log('Base URL:', window.location.origin);
+            console.log('URL completa:', window.location.origin + url);
+            
+            fetch(url, {
+              method: 'DELETE',
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+              },
+              credentials: 'same-origin'
+            })
+            .then(response => {
+              console.log('=== RESPOSTA RECEBIDA ===');
+              console.log('Status da resposta:', response.status);
+              console.log('Status text:', response.statusText);
+              console.log('Response OK:', response.ok);
+              
+              if (!response.ok) {
+                return response.text().then(text => {
+                  console.log('=== ERRO - CORPO DA RESPOSTA ===');
+                  console.log('Texto da resposta:', text);
+                  throw new Error(`HTTP error! status: ${response.status} - ${response.statusText}`);
+                });
+              }
+              return response.json();
+            })
+            .then(data => {
+              console.log('=== SUCESSO - DADOS RECEBIDOS ===');
+              console.log('Resposta do servidor:', data);
+              if (data.success) {
+                alert(`✅ Usuário "${userName}" foi deletado com sucesso!`);
+                location.reload();
+              } else {
+                alert(`❌ Erro ao deletar usuário: ${data.message || 'Erro desconhecido'}`);
+                this.disabled = false;
+                this.innerHTML = '<i class="fa-solid fa-trash"></i> <span>Deletar</span>';
+              }
+            })
+            .catch(error => {
+              console.log('=== ERRO CAPTURADO ===');
+              console.error('Erro completo:', error);
+              
+              alert(`❌ Erro de conexão ao deletar usuário: ${error.message}`);
+              this.disabled = false;
+              this.innerHTML = '<i class="fa-solid fa-trash"></i> <span>Deletar</span>';
+            });
+          }
+        });
+      });
+      
+      // ====== pesquisa por nome ======
+      const searchInput = document.getElementById('usuarioSearch');
+      const clearBtn = document.getElementById('clearSearch');
+      const searchCount = document.getElementById('searchCount');
+      const usuarioItems = document.querySelectorAll('.usuario-item');
+
+      function filterUsers() {
+        const q = (searchInput && searchInput.value || '').trim().toLowerCase();
+        let visible = 0;
+        usuarioItems.forEach(item => {
+          const nomeEl = item.querySelector('.nome-usuario');
+          const nome = nomeEl ? nomeEl.textContent.trim().toLowerCase() : '';
+          if (!q || nome.includes(q)) {
+            item.style.display = '';
+            visible++;
+          } else {
+            item.style.display = 'none';
+          }
+        });
+        if (searchCount) searchCount.textContent = `${visible} resultado(s)`;
+        // gerencia mensagem de "nenhum resultado"
+        let noRes = document.getElementById('noResultsMessage');
+        if (!noRes) {
+          noRes = document.createElement('div');
+          noRes.id = 'noResultsMessage';
+          noRes.className = 'no-results';
+          noRes.textContent = 'Nenhum usuário encontrado.';
+          const lista = document.querySelector('.usuarios-lista');
+          if (lista) lista.appendChild(noRes);
+        }
+        noRes.style.display = visible ? 'none' : 'block';
+      }
+
+      if (searchInput) {
+        searchInput.addEventListener('input', filterUsers);
+      }
+      if (clearBtn) {
+        clearBtn.addEventListener('click', function() {
+          if (searchInput) searchInput.value = '';
+          filterUsers();
+          if (searchInput) searchInput.focus();
+        });
+      }
+
+      // inicializa contagem
+      filterUsers();
+    });

@@ -1,0 +1,23 @@
+extends layout
+
+block content
+  .login-container
+    .login-left
+      // imagem grande (substitua o src se necessário)
+      img.login-hero(src="/images/malty login.jpg", alt="Malty")
+    .login-right
+      .login-box
+        .logo
+          img(src="/images/logo.png", alt="MALTY")
+        if error
+          .error-message #{error}
+        form.login-form(action="/login", method="post")
+          .form-groupe
+            label(for="email") E-mail
+            input#email(type="email", name="email", placeholder="Digite seu email", required)
+          
+          .form-groupe
+            label(for="senha") Senha
+            input#senha(type="password", name="senha", placeholder="Digite sua senha", required)
+          
+          button.btn-entrar(type="submit") ENTRAR
