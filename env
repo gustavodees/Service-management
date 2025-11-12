@@ -1,0 +1,16 @@
+BANCO_USER= root
+BANCO_SENHA= 
+BANCO_NOME= malty
+MASTER_USER= malty@promotora.com
+MASTER_SENHA= 1234
+EMAIL_USER=leonardoramosmartins@gmail.com
+EMAIL_PASS=vgotomcizampxmwp
+
+# Configurações do Sistema
+PORT=3000
+
+# API Keys
+GOOGLE_AI_API_KEY=AIzaSyB6SeapbqZhk8SnocavdhtpYOXGYyy7d2I
+
+# Configurações do WhatsApp
+WHATSAPP_SESSION_NAME=malty-session
