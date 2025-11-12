@@ -75,6 +75,7 @@ A plataforma integra tecnologias de ponta para oferecer:
 
 ### Pré-requisitos
 
+---
 ```bash
 Node.js >= 18.0.0
 MySQL Server >= 8.0
@@ -93,14 +94,20 @@ Crie o arquivo .env na raiz do projeto:
 env# Server
 PORT=3000
 
+---
+
 # Database
 DB_HOST=localhost
 DB_USER=root
 DB_PASS=070600@
 DB_NAME=db_servicemanagement
 
+---
+
 # Google AI
 GOOGLE_API_KEY=SUA_CHAVE_AQUI
+
+---
 
 # Sessions
 SESSION_DIR=./sessions
@@ -134,18 +141,28 @@ textservice-management/
 ├── sessions/                 # Sessões persistentes do WhatsApp
 └── ia-treinamento.txt        # Contexto da IA
 
+---
+
 Solução de Problemas (Troubleshooting)
 npm install Falhou
 
 
+
 ErroCausaSoluçãoEACCES / EPERMPermissõessudo chown -R $USER . ou execute como AdminETIMEDOUTRedeVerifique proxy/firewall ou tente novamentePuppeteerDependências do sistemaLinux: sudo apt-get install -y libnss3 libgbm-dev ...
+
+---
+
 MySQL
 
 ErroSoluçãoER_NOT_SUPPORTED_AUTH_MODEsql ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'senha'; ECONNREFUSEDInicie o serviço MySQL e verifique .env
 
+---
+
 WhatsApp
 
 ProblemaSoluçãoQR Code não apareceVerifique se o Chrome foi aberto; delete a pasta de sessão corrompidaSessão expiraRemova arquivos antigos em ./sessions/ e reconecte
+
+---
 
 Segurança e Boas Práticas
 
@@ -169,7 +186,7 @@ cat ~/.ssh/id_ed25519.pub
 # Windows: cat ~/.ssh/id_ed25519.pub | clip
 
 # 4. Adicionar ao GitHub → Settings → SSH Keys
-
+---
 Contribuição
 
 Crie uma branch: git checkout -b feature/nova-funcionalidade
@@ -180,9 +197,9 @@ Descrição detalhada
 Screenshots (se aplicável)
 Testes realizados
 
+---
 
-
-Referências Técnicas
+# Referências Técnicas
 
 whatsapp-web.js
 Google Generative AI
@@ -190,7 +207,8 @@ Sequelize ORM
 Pug Template Engine
 WebSocket Protocol
 
+---
 
-Service Management Platform — Automatize. Inteligência. Escala.
-Desenvolvido com excelência acadêmica e visão empresarial.
-UNISUL © 2025 — Todos os direitos reservados.
+| Service Management Platform — Automatize. Inteligência. Escala.
+| Desenvolvido com excelência acadêmica e visão empresarial.
+| UNISUL © 2025 — Todos os direitos reservados.
