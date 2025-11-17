@@ -13,9 +13,9 @@ block content
         p.page-subtitle Envie campanhas e comunicados em massa.
 
     .content-card
-      .desparo-container
-        .desparo-form-container
-          form.desparo-form#desparo-form
+      .disparo-container
+        .disparo-form-container
+          form.disparo-form#disparo-form
             .form-section
               h2 Lista de Números
               .form-group
@@ -43,7 +43,7 @@ block content
           h2 Resultado do Disparo
           .results-content#results-content
         
-        .desparo-info
+        .disparo-info
           h3 Instruções:
           ul
             li Digite os números no formato internacional (5511999999999)
@@ -240,7 +240,7 @@ block content
         // Enviar dados para o servidor com o deviceId escolhido (inclui prefixo source)
         sendBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Enviando...';
 
-        fetch('/users/desparar/enviar', {
+        fetch('/users/despara/enviar', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ numeros, mensagem, deviceId })

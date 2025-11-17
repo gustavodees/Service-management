@@ -30,6 +30,8 @@ coverage/
 # Caches
 .cache/
 .parcel-cache/
+.wwebjs_auth/
+.wwebjs_cache/
 .eslintcache
 
 # IDEs / editors

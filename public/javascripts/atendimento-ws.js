@@ -369,29 +369,25 @@ function connectWhatsappWebSocket() {
 
     switch (data.type) {
       case 'all-whatsapp-contacts':
-        // Este evento é acionado tanto na conexão inicial quanto quando um novo dispositivo se conecta
-        if (data.contacts) {
-            console.log(`Recebidos ${data.contacts.length} contatos do dispositivo ${data.deviceId}`);
-            
-            // Adiciona ou atualiza os contatos na lista global
-            const incomingContacts = data.contacts.map(c => ({
-                ...c,
-                source: 'whatsapp',
-                deviceId: data.deviceId,
-                isGroup: c.isGroup || (c.id && c.id.endsWith('@g.us'))
-            }));
+        // Este evento é acionado na conexão inicial e quando um novo dispositivo se conecta.
+        if (Array.isArray(data.contacts) && data.deviceId) {
+          console.log(`Recebidos ${data.contacts.length} contatos do dispositivo ${data.deviceId}`);
 
-            // Mescla com a lista existente para evitar duplicatas e manter o estado
-            const existingContacts = window.ultimaListaConversas || [];
-            const map = new Map();
-            existingContacts.forEach(c => map.set(c.id, c));
-            incomingContacts.forEach(c => map.set(c.id, c));
+          const incomingContacts = data.contacts.map(c => ({
+            ...c,
+            source: 'whatsapp',
+            deviceId: data.deviceId,
+            isGroup: c.isGroup || (c.id && c.id.endsWith('@g.us'))
+          }));
 
-            window.ultimaListaConversas = Array.from(map.values());
-            
-            // Salva no localStorage e renderiza a lista
-            localStorage.setItem('ultimaListaConversas', JSON.stringify(window.ultimaListaConversas));
-            renderConversas(window.ultimaListaConversas);
+          // Mescla com a lista existente para evitar duplicatas e manter o estado.
+          const existingContacts = window.ultimaListaConversas || [];
+          const merged = mergeWhatsappContacts(existingContacts, incomingContacts);
+          window.ultimaListaConversas = merged;
+
+          // Salva no localStorage e renderiza a lista imediatamente.
+          localStorage.setItem('ultimaListaConversas', JSON.stringify(window.ultimaListaConversas));
+          renderConversations(window.ultimaListaConversas);
         }
         break;
 
@@ -1552,12 +1548,39 @@ function selectChat(chatId, chatName, source) {
   const chatMessages = document.getElementById('chat-messages');
   if (chatMessages) chatMessages.innerHTML = '<p>Carregando mensagens...</p>';
 
+  // Função para buscar histórico via API REST (mais eficiente)
+  async function fetchChatHistory(chatId, deviceId) {
+    try {
+      const response = await fetch(`/whatsapp/history?chatId=${encodeURIComponent(chatId)}&deviceId=${encodeURIComponent(deviceId)}`);
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({ error: 'Falha ao buscar histórico.' }));
+        throw new Error(errData.error);
+      }
+      const data = await response.json();
+
+      if (data.success) {
+        const chatObj = window.ultimaListaConversas?.find(c => c.id === chatId);
+        if (chatObj) {
+          chatObj.history = data.messages; // Atualiza o cache local
+        }
+        renderMessages(data.messages); // Renderiza as mensagens na tela
+      } else {
+        throw new Error(data.error || 'Erro desconhecido ao buscar histórico.');
+      }
+    } catch (error) {
+      console.error('Erro ao buscar histórico do chat via API:', error);
+      if (chatMessages) {
+        chatMessages.innerHTML = `<div class="empty-chat"><p>Erro ao carregar histórico: ${error.message}</p></div>`;
+      }
+    }
+  }
+
   if (source === 'chatbot' && wsChatbot && wsChatbot.readyState === WebSocket.OPEN) {
     wsChatbot.send(JSON.stringify({ type: 'get-messages', chatId }));
-  } else if (source === 'whatsapp' && wsWhatsapp && wsWhatsapp.readyState === WebSocket.OPEN) {
+  } else if (source === 'whatsapp') {
     const chatObj = window.ultimaListaConversas?.find(c => c.id === chatId);
     const deviceId = chatObj?.deviceId || currentDeviceId || localStorage.getItem('currentDeviceId');
-    wsWhatsapp.send(JSON.stringify({ type: 'get-messages', chatId, deviceId }));
+    fetchChatHistory(chatId, deviceId); // <<< ALTERADO: Usa a nova rota da API
   } else {
     renderMessages([]);
   }

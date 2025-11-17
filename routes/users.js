@@ -17,7 +17,7 @@ router.get('/', verificaAutenticacao, function(req, res, next) {
 });
 
 /* GET Desparo de mensagens page. */
-router.get('/desparar', verificaAutenticacao, function(req, res, next) {
+router.get('/disparar', verificaAutenticacao, function(req, res, next) {
   res.render('desparaWhats', { 
     title: 'Disparo de Mensagens - Sistema Service',
     usuarioTipo: req.session.usuario ? req.session.usuario.tipo : null
@@ -25,7 +25,7 @@ router.get('/desparar', verificaAutenticacao, function(req, res, next) {
 });
 
 /* POST para enviar mensagens em lote */
-router.post('/desparar/enviar', verificaAutenticacao, async (req, res) => {
+router.post('/despara/enviar', verificaAutenticacao, async (req, res) => {
   try {
     const { numeros, mensagem, deviceId } = req.body;
 

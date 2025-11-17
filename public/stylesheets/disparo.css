@@ -3,7 +3,7 @@
    ======================================== */
 
 /* Container Principal */
-.desparo-container {
+.disparo-container {
   max-width: 1200px;
   margin: 0 auto;
   animation: fadeIn 0.5s ease-in-out;
@@ -15,7 +15,7 @@
 }
 
 /* Título da Página (herdado de estilos globais, mas com ajustes) */
-.desparo-container .page-title {
+.disparo-container .page-title {
   margin-bottom: 30px;
 }
 
@@ -23,7 +23,7 @@
    FORMULÁRIO DE DISPARO
    ======================================== */
 
-.desparo-form-container {
+.disparo-form-container {
   background: var(--container-bg-color);
   padding: 30px;
   border-radius: var(--border-radius-lg);
@@ -31,7 +31,7 @@
   margin-bottom: 30px;
 }
 
-.desparo-form {
+.disparo-form {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 30px;
@@ -212,7 +212,7 @@
    INSTRUÇÕES
    ======================================== */
 
-.desparo-info {
+.disparo-info {
   background: #f8f9fa;
   padding: 25px;
   border-radius: var(--border-radius-lg);
@@ -220,14 +220,14 @@
   border: 1px solid #e9ecef;
 }
 
-.desparo-info h3 {
+.disparo-info h3 {
   color: var(--text-color-dark);
   margin-bottom: 15px;
   font-size: 1.25rem;
   font-weight: 600;
 }
 
-.desparo-info ul {
+.disparo-info ul {
   list-style: none;
   padding-left: 0;
 }
@@ -240,7 +240,7 @@
   color: var(--text-color-muted);
 }
 
-.desparo-info li::before {
+.disparo-info li::before {
   content: "✓";
   position: absolute;
   left: 0;
@@ -362,14 +362,14 @@
    ======================================== */
 
 @media (max-width: 992px) {
-  .desparo-form {
+  .disparo-form {
     grid-template-columns: 1fr;
     gap: 25px;
   }
 }
 
 @media (max-width: 768px) {
-  .desparo-form-container, .results-container, .desparo-info {
+  .disparo-form-container, .results-container, .disparo-info {
     padding: 20px;
   }
 

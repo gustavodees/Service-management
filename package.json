@@ -30,6 +30,7 @@
     "jade": "~1.11.0",
     "lamejs": "^1.2.1",
     "morgan": "~1.9.1",
+    "multer": "^2.0.2",
     "mysql2": "^3.14.2",
     "node.js": "^0.0.1-security",
     "nodemon": "^3.1.10",

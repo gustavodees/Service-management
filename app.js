@@ -9,6 +9,7 @@ const http = require('http');
 const { WebSocketServer } = require('ws'); // Adicionado para WebSocket
 const { v4: uuidv4 } = require('uuid'); // Adicionado para gerar IDs de dispositivo
 const session = require('express-session');
+const multer = require('multer'); // <<< ADICIONADO: Para upload de arquivos
 const qrcode = require('qrcode'); // <<< ADICIONADO: Para gerar QR Code no servidor
 const sequelize = require('./routes/banco');
 const fs = require('fs'); // <<< ADICIONADO
@@ -133,6 +134,31 @@ app.use(async (req, res, next) => {
     }
   }
   next();
+});
+
+// --- CONFIGURAÇÃO DE UPLOAD DE ARQUIVOS (Multer) ---
+
+// Define o local de armazenamento e o nome do arquivo
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadPath = path.join(__dirname, 'uploads');
+    // Cria o diretório 'uploads' se não existir
+    fs.mkdirSync(uploadPath, { recursive: true });
+    cb(null, uploadPath);
+  },
+  filename: function (req, file, cb) {
+    // Mantém o nome original do arquivo, mas adiciona um timestamp para evitar conflitos
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + '-' + file.originalname);
+  }
+});
+
+const upload = multer({ storage: storage });
+
+// Rota para lidar com o upload de arquivos
+app.post('/upload-files', verificaAutenticacao, upload.array('files'), (req, res) => {
+  console.log('Arquivos recebidos:', req.files.map(f => f.filename));
+  res.json({ success: true, message: 'Arquivos enviados com sucesso!', files: req.files });
 });
 
 app.use('/', indexRouter);
@@ -499,6 +525,64 @@ app.post('/whatsapp/disconnect-device', verificaAutenticacao, async (req, res) =
   } catch (error) {
     console.error('Erro ao desconectar dispositivo:', error);
     res.status(500).json({ success: false, message: 'Erro interno do servidor.' });
+  }
+});
+
+// Adicionado: Rota para buscar o histórico de mensagens de um chat do banco de dados
+app.get('/whatsapp/history', verificaAutenticacao, async (req, res) => {
+  const { chatId, deviceId } = req.query;
+  const { empresa_id } = req.session.usuario;
+
+  if (!chatId || !deviceId) {
+    return res.status(400).json({ success: false, error: 'chatId e deviceId são obrigatórios.' });
+  }
+
+  try {
+    // 1. Validação de segurança: Garante que o dispositivo pertence à empresa do usuário
+    const device = await WhatsappDevice.findOne({
+      where: { device_id: deviceId, empresa_id: empresa_id }
+    });
+
+    if (!device) {
+      return res.status(403).json({ success: false, error: 'Acesso não autorizado a este dispositivo.' });
+    }
+
+    // 2. Busca as mensagens e mídias em paralelo para mais performance
+    const [messages, medias] = await Promise.all([
+      WhatsappMessage.findAll({
+        where: { chatId, deviceId },
+        order: [['timestamp', 'ASC']],
+        limit: 100, // Limita a 100 mensagens para evitar sobrecarga
+        raw: true,
+      }),
+      WhatsappMedia.findAll({
+        where: { chatId, deviceId },
+        attributes: ['messageId', 'mimetype', 'filename', 'data'], // Pega apenas os dados necessários
+        raw: true,
+      })
+    ]);
+
+    // 3. Combina as mídias com suas respectivas mensagens
+    const mediaMap = new Map(medias.map(m => [m.messageId, m]));
+
+    const combinedHistory = messages.map(msg => {
+      const media = mediaMap.get(msg.id);
+      if (media) {
+        return {
+          ...msg,
+          hasMedia: true,
+          mimetype: media.mimetype,
+          filename: media.filename,
+          data: media.data, // Anexa o base64 da mídia
+        };
+      }
+      return msg;
+    });
+
+    res.json({ success: true, messages: combinedHistory });
+  } catch (error) {
+    console.error('Erro ao buscar histórico de chat:', error);
+    res.status(500).json({ success: false, error: 'Erro interno do servidor.' });
   }
 });
 

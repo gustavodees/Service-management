@@ -1,0 +1,41 @@
+/*
+ * skeletons.css
+ * Estilos para indicadores de carregamento "esqueleto".
+ */
+
+.skeleton-loader {
+  padding: 20px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.skeleton-message {
+  display: flex;
+  margin-bottom: 25px;
+  opacity: 0.7;
+}
+
+.skeleton-message.out {
+  justify-content: flex-end;
+}
+
+.skeleton-message .bubble {
+  height: 45px;
+  border-radius: 18px;
+  animation: skeleton-pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.skeleton-message.in .bubble {
+  width: 65%;
+  background-color: #f0f0f0; /* Cor de bolha recebida */
+}
+
+.skeleton-message.out .bubble {
+  width: 55%;
+  background-color: #e7ffdb; /* Cor de bolha enviada */
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}

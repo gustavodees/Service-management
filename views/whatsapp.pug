@@ -97,7 +97,7 @@ block content
               break;
             case 'whatsapp-connected': // Corrigido: O evento enviado pelo manager é 'whatsapp-connected'
               setStatus('connected', 'Dispositivo conectado! Redirecionando...');
-              setTimeout(() => { window.location.href = '/atendimento'; }, 1500);
+              setTimeout(() => { window.location.href = '/conectZap'; }, 1500);
               break;
             case 'disconnected':
               setStatus('disconnected', 'Dispositivo desconectado. Recarregue a página para tentar novamente.');

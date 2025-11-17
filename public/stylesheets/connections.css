@@ -1,0 +1,52 @@
+/*
+ * connections.css
+ * Estilos para as páginas de gerenciamento de conexões (conectZap e conectBot).
+ */
+
+/* Ajustes no cabeçalho da página */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center; /* Alinha verticalmente */
+  margin-bottom: 2rem;
+}
+
+/* Ajusta o botão de adicionar para um tamanho mais adequado */
+.page-header .btn {
+  padding: 0.5rem 1rem; /* Aumenta um pouco o padding para melhor toque */
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+/* Ajustes nos cards de dispositivo */
+.card-footer {
+  display: flex;
+  justify-content: space-between; /* Espaça os botões */
+  align-items: center;
+}
+
+/* Estilo para os botões de ícone (Desconectar, Remover) */
+.btn-icon-action {
+  background-color: transparent;
+  border: 1px solid #d1d5db; /* Borda cinza claro */
+  color: #4b5563; /* Cor do ícone */
+  width: 36px;
+  height: 36px;
+  border-radius: 50%; /* Círculo */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease-in-out;
+  padding: 0;
+}
+
+.btn-icon-action:hover {
+  background-color: #f3f4f6; /* Fundo cinza ao passar o mouse */
+  color: #1f2937;
+}
+
+.btn-icon-action.danger:hover {
+  background-color: #fee2e2; /* Fundo vermelho claro */
+  color: #b91c1c; /* Ícone vermelho escuro */
+  border-color: #fecaca;
+}

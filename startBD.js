@@ -49,6 +49,3 @@ if (require.main === module) {
 module.exports = bootstrap;
 
 
-//Vamos fazer o seguinte, voce especializado em designer, gostaria que antes da tela de login em si, acho interessante que tivesse uma tela onde teria uma pequena apresentação do projeto, do que se trata, tudo feito em .pug e css, faça bem moderno e minimalista, outra coisa, precisa ter uma parte onde aparece, para a empresa se cadastrar, juntamente com isso, se voce ja estiver cadastrado, voce deve clicar, ja sou cadastrado, favor criar a tabela empresa e vincular a parte de usuarios nela e tipo , as partes dos dados de cada usuario como as do chat bot devices whatsapp media, messages sejam vinculada a cada usuario e esteja vinculada a empresa!
-
-//Faça com calma, porem com precisão e qualidade

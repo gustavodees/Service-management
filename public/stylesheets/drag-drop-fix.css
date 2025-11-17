@@ -1,0 +1,34 @@
+/*
+ * Estilos para o overlay de "Arrastar e Soltar" arquivos.
+ */
+
+/*
+ * O elemento pai (no nosso caso, .chat-panel) precisa ter position: relative
+ * para que este overlay fique contido dentro dele.
+ */
+.drag-drop-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(18, 140, 126, 0.85); /* Verde translúcido do WhatsApp */
+  color: white;
+  display: none; /* Escondido por padrão */
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  pointer-events: none; /* Não interfere com o mouse */
+  border: 3px dashed #fff;
+  box-sizing: border-box;
+  border-radius: 8px; /* Opcional: bordas arredondadas */
+  transition: opacity 0.2s ease-in-out;
+}
+
+/*
+ * Quando a classe 'drag-over' é adicionada ao .chat-panel,
+ * o overlay se torna visível.
+ */
+.drag-over > .drag-drop-overlay {
+  display: flex;
+}

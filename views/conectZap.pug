@@ -50,19 +50,18 @@ block content
                 strong= device.last_connected ? new Date(device.last_connected).toLocaleString('pt-BR') : 'Nunca'
             .card-footer
               if device.status !== 'connected'
-                button.btn.btn-sm.btn-success.connect-btn(data-device-id=device.device_id)
+                button.btn.btn-success.connect-btn(data-device-id=device.device_id, style="width: 100%;")
                   i.fas.fa-play.mr-1
                   | Conectar
-              if device.status === 'connected'
-                button.btn.btn-sm.btn-warning.disconnect-btn(data-device-id=device.device_id)
-                  i.fas.fa-stop.mr-1
-                  | Desconectar
-              button.btn.btn-sm.btn-danger.remove-btn(data-device-id=device.device_id)
-                i.fas.fa-trash.mr-1
-                | Remover
+              else
+                // Botões de ícone para ações secundárias
+                button.btn-icon-action.disconnect-btn(data-device-id=device.device_id, title="Desconectar")
+                  i.fas.fa-power-off
+                button.btn-icon-action.danger.remove-btn(data-device-id=device.device_id, title="Remover")
+                  i.fas.fa-trash
 
     // Modal para exibir o QR Code
-    #qrModal.modal(tabindex="-1")
+    #qrModal.modal.fade(tabindex="-1")
       .modal-dialog.modal-dialog-centered
         .modal-content
           .modal-header
