@@ -1,0 +1,37 @@
+extends layout
+
+block content
+  .container-fluid.mt-4
+    h1 Aprovação de Empresas Pendentes
+    p Revise e aprove ou rejeite os novos cadastros de empresas.
+
+    if empresas.length === 0
+      .alert.alert-info.mt-4
+        | Nenhuma empresa pendente de aprovação no momento.
+    else
+      .table-responsive.mt-4
+        table.table.table-hover.table-bordered
+          thead.thead-dark
+            tr
+              th Nome Fantasia
+              th CNPJ
+              th Razão Social
+              th Data de Cadastro
+              th Ações
+          tbody
+            each empresa in empresas
+              tr
+                td= empresa.nome_fantasia
+                td= empresa.cnpj
+                td= empresa.razao_social || 'Não informado'
+                td= new Date(empresa.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                td
+                  .d-flex.gap-2
+                    form(action=`/admin/aprovar-empresa/${empresa.id}`, method="POST" style="display: inline;")
+                      button(type="submit" class="btn btn-success btn-sm")
+                        i.fas.fa-check.mr-1
+                        | Aprovar
+                    form(action=`/admin/rejeitar-empresa/${empresa.id}`, method="POST" style="display: inline;")
+                      button(type="submit" class="btn btn-danger btn-sm")
+                        i.fas.fa-times.mr-1
+                        | Rejeitar

@@ -1,26 +1,26 @@
 extends layout
 
+block head
+  link(rel="stylesheet", href="/stylesheets/dashboard.css")
+  script(src="/javascripts/dashboard.js" defer)
+
 block content
   include header
+  .page-container
+    .page-header
+      div
+        h1.page-title Gráfico de Tabulação
+        p.page-subtitle Visualize o desempenho dos seus atendimentos.
+      if typeof usuarioTipo !== 'undefined' && usuarioTipo === 'admin'
+        // select para escolher "Meu usuário" ou "Equipe"
+        label(for="graficoScope" style="display:flex;align-items:center;gap:8px;color:#222;margin:0;")
+          select#graficoScope.form-control(name="graficoScope")
+            // opção para ver o gráfico do próprio usuário (usa usuarioId e usuarioNome passados pelo servidor)
+            option(value="/users/grafico/" + (typeof usuarioId !== 'undefined' ? usuarioId : '')) #{typeof usuarioNome !== 'undefined' ? usuarioNome : 'Meu usuário'}
+            // opção para ver o agregado da equipe
+            option(value="/users/grafico") Equipe
 
-  // container do gráfico
-  .grafico-page
-    h1.page-title 
-      i.icon.fas.fa-chart-bar
-      | Gráfico da Tabulação
-    .grafico-card
-      // cabeçalho com título + select (aparece só para admin)
-      .grafico-header(style="display:flex; align-items:center; justify-content:space-between; gap:12px;")
-        h1.titulo-grafico Gráfico da Tabulação
-        if typeof usuarioTipo !== 'undefined' && usuarioTipo === 'admin'
-          // select para escolher "Meu usuário" ou "Equipe"
-          label(for="graficoScope" style="display:flex;align-items:center;gap:8px;color:#222;margin:0;")
-            select#graficoScope(name="graficoScope")
-              // opção para ver o gráfico do próprio usuário (usa usuarioId e usuarioNome passados pelo servidor)
-              option(value="/users/grafico/" + (typeof usuarioId !== 'undefined' ? usuarioId : '')) #{typeof usuarioNome !== 'undefined' ? usuarioNome : 'Meu usuário'}
-              // opção para ver o agregado da equipe
-              option(value="/users/grafico") Equipe
-
+    .content-card
       .grafico-row
         canvas#graficoPizza(width="600" height="400")
         .grafico-legend#graficoLegend

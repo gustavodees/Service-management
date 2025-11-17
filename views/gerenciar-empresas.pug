@@ -1,0 +1,74 @@
+extends layout
+
+block head
+  link(rel="stylesheet", href="/stylesheets/dashboard.css")
+  style.
+    .status-label {
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-align: center;
+      white-space: nowrap;
+    }
+    .status-aprovado { background-color: #d4edda; color: #155724; }
+    .status-pendente { background-color: #fff3cd; color: #856404; }
+    .status-bloqueado { background-color: #f8d7da; color: #721c24; }
+    .status-rejeitado { background-color: #e2e3e5; color: #383d41; }
+
+block content
+  include header
+  .page-container
+    .page-header
+      div
+        h1.page-title Gerenciar Empresas
+        p.page-subtitle Visualize, edite e gerencie todas as empresas cadastradas.
+
+    .content-card
+      if !empresas || empresas.length === 0
+        .empty-state
+          i.fas.fa-building.empty-icon
+          h3 Nenhuma empresa encontrada
+          p.text-muted Assim que novas empresas se cadastrarem, elas aparecerão aqui.
+      else
+        .table-responsive
+          table.table.table-hover
+            thead
+              tr
+                th Nome Fantasia
+                th CNPJ
+                th Status
+                th Usuários
+                th Ações
+            tbody
+              each empresa in empresas
+                -
+                  let statusClass = '';
+                  let statusText = 'Desconhecido';
+                  switch(empresa.status) {
+                    case 2: statusClass = 'status-aprovado'; statusText = 'Aprovado'; break;
+                    case 1: statusClass = 'status-pendente'; statusText = 'Pendente'; break;
+                    case -1: statusClass = 'status-bloqueado'; statusText = 'Bloqueado'; break;
+                    case -2: statusClass = 'status-rejeitado'; statusText = 'Rejeitado'; break;
+                  }
+                tr
+                  td= empresa.nome_fantasia
+                  td= empresa.cnpj
+                  td
+                    span(class=`status-label ${statusClass}`)= statusText
+                  td= empresa.Usuarios ? empresa.Usuarios.length : 0
+                  td
+                    a.btn.btn-sm.btn-outline-primary.mr-2(href=`/admin/editar-empresa/${empresa.id}`, title="Editar")
+                      i.fas.fa-pencil-alt
+                    
+                    form(action=`/admin/alternar-status-empresa/${empresa.id}`, method="POST", style="display: inline-block;")
+                      if empresa.status === 2
+                        button.btn.btn-sm.btn-outline-warning.mr-2(type="submit", title="Bloquear")
+                          i.fas.fa-lock
+                      else if empresa.status === -1
+                        button.btn.btn-sm.btn-outline-success.mr-2(type="submit", title="Desbloquear")
+                          i.fas.fa-lock-open
+
+                    form(action=`/admin/remover-empresa/${empresa.id}`, method="POST", style="display: inline-block;", onsubmit="return confirm('Tem certeza que deseja remover esta empresa e todos os seus dados? Esta ação não pode ser desfeita.');")
+                      button.btn.btn-sm.btn-outline-danger(type="submit", title="Remover")
+                        i.fas.fa-trash-alt

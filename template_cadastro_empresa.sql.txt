@@ -1,0 +1,52 @@
+-- =====================================================================
+-- TEMPLATE SQL PARA CADASTRO DE EMPRESA E USUÁRIO ADMINISTRADOR
+-- =====================================================================
+--
+-- Instruções:
+-- 1. Substitua os valores de exemplo abaixo pelos dados desejados.
+-- 2. Execute este script no seu banco de dados.
+--
+-- O script irá:
+--   a. Criar uma nova empresa na tabela `empresas`.
+--   b. Criptografar a senha da empresa usando SHA256.
+--   c. Definir o status da empresa (ex: 'aprovado').
+--   d. Obter o ID da empresa recém-criada.
+--   e. Criar um novo usuário na tabela `usuarios` com o perfil 'admin'.
+--   f. Associar o novo usuário à empresa criada.
+--   g. Criptografar a senha do usuário usando SHA256.
+--
+-- =====================================================================
+
+-- Inicia uma transação para garantir que ambas as operações (empresa e usuário)
+-- sejam concluídas com sucesso.
+START TRANSACTION;
+
+-- Defina os valores aqui (substitua os dados de exemplo)
+SET @nome_fantasia = 'Nome Fantasia da Sua Empresa';
+SET @razao_social = 'Razão Social da Sua Empresa (Opcional)';
+SET @cnpj = '00.000.000/0001-91';
+SET @senha_empresa = 'senha-forte-para-a-empresa';
+SET @status_empresa = 'aprovado'; -- Status da empresa: 'aprovado', 'pendente', 'bloqueado'
+
+SET @nome_admin = 'Nome Completo do Administrador';
+SET @email_admin = 'admin@suaempresa.com';
+SET @senha_admin = 'senha-forte-para-o-admin';
+
+-- NOTA: Se a coluna `status` não existir na sua tabela `empresas`,
+-- execute o comando abaixo uma única vez para criá-la:
+--
+-- ALTER TABLE empresas ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'pendente';
+--
+
+-- 1. Insere a nova empresa na tabela `empresas`
+-- A senha é convertida para um hash SHA256.
+INSERT INTO empresas (nome_fantasia, razao_social, cnpj, senha_empresa, status)
+VALUES (@nome_fantasia, @razao_social, @cnpj, SHA2(@senha_empresa, 256), @status_empresa);
+
+-- 2. Insere o usuário administrador na tabela `usuarios`
+-- A senha é convertida para um hash SHA256 e o usuário é associado à empresa recém-criada.
+INSERT INTO usuarios (empresa_id, nome_completo, email, senha, role)
+VALUES (LAST_INSERT_ID(), @nome_admin, @email_admin, SHA2(@senha_admin, 256), 'admin');
+
+-- Confirma as alterações no banco de dados
+COMMIT;

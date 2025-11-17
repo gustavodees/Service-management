@@ -6,18 +6,32 @@ var path = require('path');
 var cookieParser = require('cookie-parser');
 var logger = require('morgan');
 const http = require('http');
-const WebSocket = require('ws');
+const { WebSocketServer } = require('ws'); // Adicionado para WebSocket
+const { v4: uuidv4 } = require('uuid'); // Adicionado para gerar IDs de dispositivo
 const session = require('express-session');
+const qrcode = require('qrcode'); // <<< ADICIONADO: Para gerar QR Code no servidor
 const sequelize = require('./routes/banco');
 const fs = require('fs'); // <<< ADICIONADO
-const sessionParser = session({
-  secret: 'Service-management-secret',
-  resave: false,
-  saveUninitialized: false
-});
+
+// --- PACOTES DE SEGURANÇA ---
+const helmet = require('helmet'); // Protege contra vulnerabilidades web conhecidas
+// const csrf = require('csurf'); // Proteção contra Cross-Site Request Forgery (DESATIVADO TEMPORARIAMENTE)
+const { body, validationResult } = require('express-validator'); // Validação e sanitização de inputs
+
+const WhatsappDevice = require('./routes/whatsappDevice'); // Adicionado
+const ChatbotDevice = require('./routes/chatbotDevice'); // Adicionado
+const whatsappManager = require('./whatsappManager'); // Adicionado: Gerenciador de clientes WhatsApp
+
+// Adicionado: Importar todos os modelos para sincronização
+const Tabulacao = require('./routes/Tabulacao');
+const WhatsappMessage = require('./routes/WhatsappMessage');
+const WhatsappMedia = require('./routes/WhatsappMedia');
+const ActivityLog = require('./routes/ActivityLog'); // Adicionado
 
 var indexRouter = require('./routes/index');
 var usersRouter = require('./routes/users');
+var adminRouter = require('./routes/admin'); // Adicionado
+const Empresa = require('./routes/Empresa'); // Adicionado
 var chatbotRouter = require('./routes/chatbot');
 const Usuario = require('./routes/Usuario');
 const bcrypt = require('bcrypt');
@@ -25,10 +39,48 @@ const verificaAutenticacao = require('./routes/verificaAutenticacao');
 
 const app = express();
 const server = http.createServer(app);
-app.use(sessionParser);
 
-const whatsappRouter = require('./routes/whatsapp');
-const wss = new WebSocket.Server({ noServer: true });
+// Adicionado: Configuração do Servidor WebSocket
+const wss = new WebSocketServer({
+  noServer: true // Permite usar um middleware para autenticação
+});
+
+// Passa a instância do WebSocket para o gerenciador
+whatsappManager.setWebSocket(wss);
+
+// Adicionado: Centraliza o envio de QR Code via WebSocket
+// Ouve o evento 'qr_update' do whatsappManager
+whatsappManager.whatsappEvents.on('qr_update', ({ deviceId, qr }) => {
+  // Gera o QR Code como um Data URI
+  qrcode.toDataURL(qr, (err, url) => {
+    if (err) {
+      console.error(`Falha ao gerar QR Code para ${deviceId}:`, err);
+      return;
+    }
+    // Envia a mensagem para todos os clientes WebSocket conectados
+    wss.clients.forEach(client => {
+      if (client.readyState === 1) { // WebSocket.OPEN
+        client.send(JSON.stringify({ type: 'qr', deviceId, qrDataURL: url }));
+      }
+    });
+  });
+});
+
+// --- CONFIGURAÇÃO DE MIDDLEWARES DE SEGURANÇA (IMPORTANTE!) ---
+
+// 1. Helmet: Define vários cabeçalhos HTTP de segurança.
+// Adiciona Content-Security-Policy (CSP) para mitigar XSS.
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+      "script-src": ["'self'", "'unsafe-inline'"], // Permite scripts do próprio domínio e inline (temporário para teste)
+      "style-src": ["'self'", "https://fonts.googleapis.com", "'unsafe-inline'"],
+      "font-src": ["'self'", "https://fonts.googleapis.com", "data:"],
+      "img-src": ["'self'", "data:"], // Permite imagens do próprio domínio e data URIs (para o QR Code).
+    },
+  },
+}));
 
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
@@ -38,40 +90,90 @@ app.use(logger('dev'));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(cookieParser());
+
+// 2. Sessão Segura: Define a configuração da sessão uma vez
+const sessionMiddleware = session({
+  secret: process.env.SESSION_SECRET || 'fallback-secret-change-me', // Use variável de ambiente!
+  resave: false,
+  saveUninitialized: false, // Não cria sessão até que algo seja armazenado
+  cookie: {
+    httpOnly: true, // Impede acesso via JavaScript no cliente
+    secure: process.env.NODE_ENV === 'production', // Use cookies seguros em produção (HTTPS)
+    sameSite: 'lax'
+  }
+});
+app.use(sessionMiddleware); // Usa o middleware de sessão no Express
+
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.use('/sounds', express.static('sounds'));// Adicionar esta linha para servir áudios
-app.use('/audio', express.static(path.join(__dirname, 'public', 'audio')));
+// 3. CSRF Protection: Middleware deve vir após session e cookieParser.
+// const csrfProtection = csrf({ cookie: true }); // DESATIVADO TEMPORARIAMENTE
+// app.use(csrfProtection); // DESATIVADO TEMPORARIAMENTE
 
-app.use(session({
-  secret: 'Service-management-secret',
-  resave: false,
-  saveUninitialized: true
-}));
+// Middleware para disponibilizar dados globais para as views
+app.use(async (req, res, next) => {
+  // Disponibiliza o token CSRF para todos os formulários em todas as views
+  // res.locals.csrfToken = req.csrfToken(); // DESATIVADO TEMPORARIAMENTE
+
+  if (req.session && req.session.usuario) {
+    res.locals.usuarioTipo = req.session.usuario.tipo;
+    res.locals.usuarioEmpresaId = req.session.usuario.empresa_id;
+
+    // Se for admin host, contar empresas pendentes
+    if (req.session.usuario.tipo === 'admin' && !req.session.usuario.empresa_id) {
+      const count = await Empresa.count({ where: { status: 'pendente' } });
+      res.locals.empresasPendentes = count;
+      res.locals.nomeEmpresaLogada = 'Acesso Mestre'; // Nome para o admin host
+    } else if (req.session.usuario.empresa_id) {
+      // Adicionado: Busca o nome da empresa para usuários normais
+      const empresa = await Empresa.findByPk(req.session.usuario.empresa_id);
+      if (empresa) {
+        res.locals.nomeEmpresaLogada = empresa.nome_fantasia;
+      }
+    }
+  }
+  next();
+});
 
 app.use('/', indexRouter);
 app.use('/users', usersRouter);
+app.use('/admin', adminRouter); // Adicionado
 app.use('/chatbot', chatbotRouter);
-app.use('/whatsapp', whatsappRouter);
 
-// Configurar caminhos WebSocket melhorados
+// Adicionado: Upgrade de conexão para o WebSocket
 server.on('upgrade', (request, socket, head) => {
-  sessionParser(request, {}, () => {
-    const pathname = request.url;
-
-    if (pathname.startsWith('/ws-whatsapp') || pathname.startsWith('/ws-atendimento')) {
-      if (pathname.includes('atendimento')) {
-        request.url = '/ws-atendimento';
-      }
-      whatsappRouter.handleUpgrade(request, socket, head, wss);
-    } else if (pathname.startsWith('/ws-chatbot')) {
-      // Novo: WebSocket do chatbot
-      chatbotRouter.handleChatbotUpgrade(request, socket, head, wss);
-    } else {
-      // Outros WebSockets (fallback)
-      whatsappRouter.handleUpgrade(request, socket, head, wss);
+  // Usa o mesmo middleware de sessão do Express para obter a sessão do usuário
+  sessionMiddleware(request, {}, () => {
+    // Se não houver sessão ou usuário, destrói o socket
+    if (!request.session || !request.session.usuario) {
+      socket.destroy();
+      return;
     }
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit('connection', ws, request);
+    });
   });
+});
+
+// Rota da API para validar o CNPJ
+app.post('/api/validar-cnpj', async (req, res) => {
+  const { cnpj } = req.body;
+  if (!cnpj) {
+    return res.status(400).json({ success: false, message: 'CNPJ não fornecido.' });
+  }
+
+  try {
+    const empresa = await Empresa.findOne({ where: { cnpj: cnpj.replace(/[.\-/]/g, '') } });
+
+    if (empresa) {
+      res.json({ success: true, nome_fantasia: empresa.nome_fantasia });
+    } else {
+      res.status(404).json({ success: false, message: 'Empresa não encontrada ou CNPJ inválido.' });
+    }
+  } catch (error) {
+    console.error('Erro ao validar CNPJ:', error);
+    res.status(500).json({ success: false, message: 'Erro interno do servidor.' });
+  }
 });
 
 app.get('/cadastro', verificaAutenticacao, function(req, res) {
@@ -79,48 +181,325 @@ app.get('/cadastro', verificaAutenticacao, function(req, res) {
   if (!req.session.usuario || req.session.usuario.tipo !== 'admin') {
     return res.status(403).render('error', { message: 'Acesso negado', error: {} });
   }
-  res.render('cadastro', { usuarioTipo: req.session.usuario ? req.session.usuario.tipo : null });
-});
-
-app.post('/cadastro', verificaAutenticacao, async (req, res) => {
-  // apenas admin
-  if (!req.session.usuario || req.session.usuario.tipo !== 'admin') {
-    return res.render('cadastro', { error: 'Acesso negado', usuarioTipo: req.session.usuario ? req.session.usuario.tipo : null });
-  }
-  const { nome, email, senha, tipo } = req.body;
-  try {
-    const existe = await Usuario.findOne({ where: { email } });
-    if (existe) {
-      return res.render('cadastro', { error: 'E-mail já cadastrado.', usuarioTipo: req.session.usuario ? req.session.usuario.tipo : null });
-    }
-    const senhaHash = await bcrypt.hash(senha, 10);
-    await Usuario.create({ nome, email, senha: senhaHash, tipo });
-    res.render('cadastro', { success: 'Usuário cadastrado com sucesso!', usuarioTipo: req.session.usuario ? req.session.usuario.tipo : null });
-  } catch (error) {
-    res.render('cadastro', { error: 'Erro ao cadastrar usuário.', usuarioTipo: req.session.usuario ? req.session.usuario.tipo : null });
-  }
-});
-
-app.get('/conectZap', verificaAutenticacao, function(req, res) {
-  res.render('conectZap', { usuarioTipo: req.session.usuario ? req.session.usuario.tipo : null });
-});
-
-app.get('/conectBot', verificaAutenticacao, function(req, res) {
-  res.render('conectBot', { 
-    usuarioTipo: req.session.usuario ? req.session.usuario.tipo : null 
+  res.render('cadastro', {
+    title: 'Cadastro de Usuário',
+    usuarioTipo: req.session.usuario ? req.session.usuario.tipo : null
   });
 });
 
-// Adicionar middleware para logar todas as requisições DELETE
-app.use('/deletar-usuario/*', (req, res, next) => {
-  console.log('=== MIDDLEWARE - REQUISIÇÃO INTERCEPTADA ===');
-  console.log('Método:', req.method);
-  console.log('URL:', req.url);
-  console.log('Parâmetros:', req.params);
-  console.log('Headers:', req.headers);
-  console.log('Body:', req.body);
-  console.log('Sessão:', req.session);
-  next();
+// Rota de cadastro com VALIDAÇÃO E SANITIZAÇÃO
+app.post('/cadastro',
+  verificaAutenticacao,
+  // 4. Validação de Input com express-validator
+  body('email').isEmail().normalizeEmail().withMessage('Por favor, insira um e-mail válido.'),
+  body('nome').trim().escape().notEmpty().withMessage('O nome é obrigatório.'),
+  body('senha').isLength({ min: 8 }).withMessage('A senha deve ter no mínimo 8 caracteres.'),
+  body('tipo').isIn(['admin', 'funcionario']).withMessage('Tipo de usuário inválido.'),
+  async (req, res) => {
+    if (!req.session.usuario || req.session.usuario.tipo !== 'admin') {
+      return res.status(403).render('cadastro', { error: 'Acesso negado.' });
+    }
+
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).render('cadastro', {
+        error: errors.array()[0].msg, // Mostra o primeiro erro
+        usuarioTipo: req.session.usuario.tipo
+      });
+    }
+
+    try {
+      const { nome, email, senha, tipo } = req.body;
+      const existe = await Usuario.findOne({ where: { email } });
+      if (existe) {
+        return res.render('cadastro', { error: 'E-mail já cadastrado.', usuarioTipo: req.session.usuario.tipo });
+      }
+      const senhaHash = await bcrypt.hash(senha, 10);
+      await Usuario.create({ nome, email, senha: senhaHash, tipo, empresa_id: req.session.usuario.empresa_id });
+      
+      // Adicionado: Registrar a criação de usuário no log
+      await ActivityLog.create({
+        user_id: req.session.usuario.id,
+        empresa_id: req.session.usuario.empresa_id,
+        action: 'USER_CREATED',
+        details: `O admin '${req.session.usuario.nome}' criou o usuário '${nome}' (${email}).`,
+        ip_address: req.ip
+      });
+
+      res.render('cadastro', { success: 'Usuário cadastrado com sucesso!', usuarioTipo: req.session.usuario.tipo });
+    } catch (error) {
+      res.render('cadastro', { error: 'Erro ao cadastrar usuário.', usuarioTipo: req.session.usuario.tipo });
+    }
+  });
+
+// Rota GET para exibir o formulário de edição de usuário
+app.get('/editar-usuario/:id', verificaAutenticacao, async (req, res) => {
+  if (!req.session.usuario || req.session.usuario.tipo !== 'admin') {
+    return res.status(403).render('error', { message: 'Acesso negado.' });
+  }
+
+  try {
+    const usuario = await Usuario.findByPk(req.params.id);
+    if (!usuario) {
+      return res.status(404).render('error', { message: 'Usuário não encontrado.' });
+    }
+    res.render('editar-usuario', { title: 'Editar Usuário', usuario });
+  } catch (error) {
+    console.error('Erro ao buscar usuário para edição:', error);
+    res.status(500).render('error', { message: 'Erro ao carregar página de edição.' });
+  }
+});
+
+// Rota POST para salvar as alterações do usuário
+app.post('/editar-usuario/:id',
+  verificaAutenticacao,
+  body('email').isEmail().normalizeEmail().withMessage('Por favor, insira um e-mail válido.'),
+  body('nome').trim().escape().notEmpty().withMessage('O nome é obrigatório.'),
+  body('tipo').isIn(['admin', 'funcionario']).withMessage('Tipo de usuário inválido.'),
+  async (req, res) => {
+    if (!req.session.usuario || req.session.usuario.tipo !== 'admin') {
+      return res.status(403).render('error', { message: 'Acesso negado.' });
+    }
+
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      const usuario = await Usuario.findByPk(req.params.id);
+      return res.status(400).render('editar-usuario', {
+        title: 'Editar Usuário',
+        error: errors.array()[0].msg,
+        usuario: usuario
+      });
+    }
+
+    try {
+      const { nome, email, tipo, senha } = req.body;
+      const usuario = await Usuario.findByPk(req.params.id);
+
+      const dadosUpdate = { nome, email, tipo };
+      if (senha) {
+        dadosUpdate.senha = await bcrypt.hash(senha, 10);
+      }
+
+      await usuario.update(dadosUpdate);
+      res.redirect('/usuariocadastrado'); // Redireciona de volta para a lista
+    } catch (error) {
+      console.error('Erro ao salvar usuário:', error);
+      res.status(500).render('error', { message: 'Erro ao salvar alterações.' });
+    }
+  });
+
+// Rota GET para a página "Meu Perfil"
+app.get('/meu-perfil', verificaAutenticacao, async (req, res) => {
+  try {
+    const usuario = await Usuario.findByPk(req.session.usuario.id);
+    res.render('meu-perfil', {
+      title: 'Meu Perfil',
+      usuario: usuario, // Passa o objeto do usuário para a view
+      usuarioTipo: req.session.usuario.tipo
+    });
+  } catch (error) {
+    console.error('Erro ao carregar perfil:', error);
+    res.render('error', { message: 'Erro ao carregar seu perfil.' });
+  }
+});
+
+// Rota POST para alterar a senha
+app.post('/meu-perfil',
+  verificaAutenticacao,
+  // Validação do nome
+  body('nome').trim().escape().notEmpty().withMessage('O nome é obrigatório.'),
+  // Validações condicionais para a senha
+  body('nova_senha').if(body('nova_senha').notEmpty()).isLength({ min: 8 }).withMessage('A nova senha deve ter no mínimo 8 caracteres.'),
+  body('confirmar_nova_senha').custom((value, { req }) => {
+    if (req.body.nova_senha && value !== req.body.nova_senha) {
+      throw new Error('As senhas não coincidem.');
+    }
+    return true;
+  }),
+  async (req, res) => {
+    const errors = validationResult(req);
+    const usuario = await Usuario.findByPk(req.session.usuario.id); // Busca o usuário para re-renderizar se houver erro
+
+    if (!errors.isEmpty()) {
+      return res.render('meu-perfil', { title: 'Meu Perfil', usuario: usuario, error: errors.array()[0].msg });
+    }
+
+    try {
+      const { nome, senha_atual, nova_senha } = req.body;
+      const dadosUpdate = { nome }; // Começa com o nome para atualizar
+
+      // Se o campo de nova senha foi preenchido, processa a alteração de senha
+      if (nova_senha) {
+        if (!senha_atual) {
+          return res.render('meu-perfil', { title: 'Meu Perfil', usuario: usuario, error: 'A senha atual é obrigatória para definir uma nova.' });
+        }
+
+        const senhaValida = await bcrypt.compare(senha_atual, usuario.senha);
+        if (!senhaValida) {
+          return res.render('meu-perfil', { title: 'Meu Perfil', usuario: usuario, error: 'A senha atual está incorreta.' });
+        }
+
+        dadosUpdate.senha = await bcrypt.hash(nova_senha, 10);
+
+        // Adicionado: Registrar a alteração de senha no log de atividades
+        await ActivityLog.create({
+          user_id: usuario.id,
+          empresa_id: usuario.empresa_id,
+          action: 'PASSWORD_CHANGE_SELF',
+          details: `O usuário '${usuario.nome}' (ID: ${usuario.id}) alterou a própria senha.`,
+          ip_address: req.ip
+        });
+      }
+
+      await usuario.update(dadosUpdate);
+
+      // Busca o usuário atualizado para exibir na página
+      const usuarioAtualizado = await Usuario.findByPk(req.session.usuario.id);
+      res.render('meu-perfil', { title: 'Meu Perfil', usuario: usuarioAtualizado, success: 'Perfil atualizado com sucesso!' });
+    } catch (error) {
+      res.render('meu-perfil', { title: 'Meu Perfil', usuario: usuario, error: 'Erro ao atualizar o perfil.' });
+    }
+  });
+
+app.get('/conectZap', verificaAutenticacao, async (req, res) => {
+  try {
+    if (!req.session || !req.session.usuario) {
+      // Segurança extra, embora verificaAutenticacao já deva cuidar disso
+      return res.redirect('/login');
+    }
+
+    const { empresa_id } = req.session.usuario;
+    // Garante que a cláusula where seja segura mesmo se empresa_id for nulo
+    const whereClause = empresa_id ? { empresa_id: empresa_id } : {};
+
+    const devices = await WhatsappDevice.findAll({ where: whereClause });
+
+    res.render('conectZap', {
+      devices: devices || [],
+      usuarioTipo: req.session.usuario.tipo
+    });
+  } catch (error) {
+    console.error('Erro ao buscar dispositivos WhatsApp:', error);
+    res.render('conectZap', { devices: [], error: 'Erro ao carregar dispositivos.' });
+  }
+});
+
+app.get('/conectBot', verificaAutenticacao, async (req, res) => {
+  try {
+    const { empresa_id } = req.session.usuario;
+    const whereClause = empresa_id ? { empresa_id } : {};
+
+    const devices = await ChatbotDevice.findAll({ where: whereClause });
+    res.render('conectBot', {
+      devices: devices,
+      usuarioTipo: req.session.usuario.tipo
+    });
+  } catch (error) {
+    console.error('Erro ao buscar dispositivos de chatbot:', error);
+    res.render('conectBot', { devices: [], error: 'Erro ao carregar dispositivos.' });
+  }
+});
+
+// --- ROTAS PARA WHATSAPP ---
+
+// Cria um novo registro de dispositivo no banco
+app.post('/whatsapp/new-device', verificaAutenticacao, async (req, res) => {
+  try {
+    const deviceId = `device-${uuidv4()}`;
+    await WhatsappDevice.create({
+      device_id: deviceId,
+      user_id: req.session.usuario.id, // Adicionado: Associa o dispositivo ao usuário logado
+      empresa_id: req.session.usuario.empresa_id,
+      status: 'disconnected'
+    });
+    res.json({ success: true, deviceId });
+  } catch (error) {
+    console.error('Erro ao criar novo dispositivo:', error);
+    res.status(500).json({ success: false, error: 'Erro no servidor' });
+  }
+});
+
+// Inicia a inicialização de um cliente específico
+app.post('/whatsapp/start/:deviceId', verificaAutenticacao, async (req, res) => {
+  const { deviceId } = req.params;
+  const { empresa_id } = req.session.usuario;
+  // Validação de segurança: Garante que o usuário só possa iniciar um device da sua empresa
+  const device = await WhatsappDevice.findOne({ where: { device_id: deviceId, empresa_id } });
+  if (!device) {
+    return res.status(403).json({ success: false, error: 'Dispositivo não encontrado ou não autorizado.' });
+  }
+  whatsappManager.initializeClient(deviceId, empresa_id);
+  res.json({ success: true, message: 'Inicialização solicitada.' });
+});
+
+// Retorna o QR Code e o status (usado para polling de fallback)
+app.get('/whatsapp/qrcode/:deviceId', verificaAutenticacao, (req, res) => {
+    const { deviceId } = req.params;
+    const clientStatus = whatsappManager.getClientStatus(deviceId);
+
+    if (clientStatus && clientStatus.qr) {
+        // Gera o QR Code como um Data URI
+        qrcode.toDataURL(clientStatus.qr, (err, url) => {
+            if (err) {
+                return res.status(500).json({ success: false, error: 'Falha ao gerar QR Code.' });
+            }
+            res.json({
+                success: true,
+                qrDataURL: url, // Envia a imagem como Data URI
+                isReady: clientStatus.isReady,
+            });
+        });
+    } else {
+        res.json({ success: false, qrDataURL: null, isReady: clientStatus ? clientStatus.isReady : false });
+    }
+});
+
+// Adicionado: Rota para remover um dispositivo
+app.delete('/whatsapp/remove-device', verificaAutenticacao, async (req, res) => {
+  const { deviceId } = req.query;
+  const { id: userId, empresa_id } = req.session.usuario;
+
+  if (!deviceId) {
+    return res.status(400).json({ success: false, message: 'ID do dispositivo é obrigatório.' });
+  }
+
+  try {
+    // Segurança: Garante que o usuário só pode remover um dispositivo da sua própria empresa
+    const result = await WhatsappDevice.destroy({
+      where: { device_id: deviceId, empresa_id: empresa_id }
+    });
+
+    if (result > 0) {
+      res.json({ success: true, message: 'Dispositivo removido com sucesso.' });
+    } else {
+      res.status(404).json({ success: false, message: 'Dispositivo não encontrado ou não autorizado.' });
+    }
+  } catch (error) {
+    console.error('Erro ao remover dispositivo:', error);
+    res.status(500).json({ success: false, message: 'Erro interno do servidor.' });
+  }
+});
+
+// Adicionado: Rota para desconectar um dispositivo (logout)
+app.post('/whatsapp/disconnect-device', verificaAutenticacao, async (req, res) => {
+  const { deviceId } = req.query;
+  const { empresa_id } = req.session.usuario;
+
+  if (!deviceId) {
+    return res.status(400).json({ success: false, message: 'ID do dispositivo é obrigatório.' });
+  }
+
+  try {
+    const device = await WhatsappDevice.findOne({ where: { device_id: deviceId, empresa_id } });
+    if (!device) {
+      return res.status(403).json({ success: false, message: 'Dispositivo não encontrado ou não autorizado.' });
+    }
+    await whatsappManager.disconnectClient(deviceId);
+    res.json({ success: true, message: 'Solicitação de desconexão enviada.' });
+  } catch (error) {
+    console.error('Erro ao desconectar dispositivo:', error);
+    res.status(500).json({ success: false, message: 'Erro interno do servidor.' });
+  }
 });
 
 // Rota para deletar usuário
@@ -209,17 +588,6 @@ app.delete('/deletar-usuario/:id', verificaAutenticacao, async (req, res) => {
   }
 });
 
-// Adicionar middleware para capturar requisições não encontradas
-app.use('*', (req, res, next) => {
-  if (req.originalUrl.includes('deletar-usuario')) {
-    console.log('=== ROTA NÃO ENCONTRADA ===');
-    console.log('URL tentada:', req.originalUrl);
-    console.log('Método:', req.method);
-    console.log('Todas as rotas registradas para DELETE:', app._router.stack.filter(r => r.route && r.route.methods.delete));
-  }
-  next();
-});
-
 // Alternativa mais simples - buscar admins e funcionários separadamente
 app.get('/usuariocadastrado', verificaAutenticacao, async function(req, res) {
   // apenas admin
@@ -228,35 +596,27 @@ app.get('/usuariocadastrado', verificaAutenticacao, async function(req, res) {
   }
 
   try {
-    console.log('=== CARREGANDO USUÁRIOS CADASTRADOS ===');
-    console.log('Usuário logado:', req.session.usuario);
-    
-    const usuarioLogadoId = req.session.usuario.id;
-    
-    // Buscar admins primeiro (excluindo o usuário logado)
-    const admins = await Usuario.findAll({
-      where: { 
-        tipo: 'admin',
-        id: { [require('sequelize').Op.ne]: usuarioLogadoId } // Excluir o usuário logado
-      },
-      order: [['nome', 'ASC']]
+    const { id: usuarioLogadoId, empresa_id: usuarioEmpresaId } = req.session.usuario;
+
+    // 1. Define a cláusula 'where' para filtrar os usuários.
+    const whereClause = {
+      // Exclui o próprio usuário da lista
+      id: { [require('sequelize').Op.ne]: usuarioLogadoId }
+    };
+
+    // 2. Se o usuário logado for um admin de empresa, adiciona o filtro de empresa.
+    if (usuarioEmpresaId) {
+      whereClause.empresa_id = usuarioEmpresaId;
+    }
+
+    // 3. Busca todos os usuários que correspondem ao filtro, ordenando por tipo e nome.
+    const usuarios = await Usuario.findAll({
+      where: whereClause,
+      order: [
+        ['tipo', 'DESC'], // 'admin' vem antes de 'funcionario'
+        ['nome', 'ASC']
+      ]
     });
-    
-    // Buscar funcionários depois (excluindo o usuário logado)
-    const funcionarios = await Usuario.findAll({
-      where: { 
-        tipo: 'funcionario',
-        id: { [require('sequelize').Op.ne]: usuarioLogadoId } // Excluir o usuário logado
-      },
-      order: [['nome', 'ASC']]
-    });
-    
-    // Concatenar arrays: admins primeiro, depois funcionários
-    const usuarios = [...admins, ...funcionarios];
-    
-    console.log('Usuários encontrados (excluindo o logado):', usuarios.length);
-    console.log('Usuário logado excluído:', usuarioLogadoId);
-    console.log('Ordem dos usuários:', usuarios.map(u => `${u.nome} (${u.tipo}) - ID: ${u.id}`));
     
     res.render('usuariocadastrado', { 
       usuarios: usuarios, 
@@ -292,22 +652,21 @@ app.get('/favicon.ico', (req, res) => {
   return res.sendStatus(204);
 });
 
-// middleware de debug: log de rotas não encontradas / requests suspeitos
-app.use((req, res, next) => {
-  console.log('DEBUG REQUEST:', req.method, req.originalUrl);
-  console.log(' Referer:', req.get('referer'));
-  console.log(' User-Agent:', req.get('user-agent'));
-  console.log(' Query:', req.query);
-  next();
-});
-
 // catch 404 and forward to error handler - MANTER ESTA PARTE NO FINAL
 app.use(function(req, res, next) {
-  console.log('=== MIDDLEWARE 404 ===');
-  console.log('Rota não encontrada:', req.originalUrl);
-  console.log('Método:', req.method);
   next(createError(404));
 });
+
+// Handler de erro do CSRF
+// app.use(function (err, req, res, next) { // DESATIVADO TEMPORARIAMENTE
+//   if (err.code === 'EBADCSRFTOKEN') {
+//     console.warn('CSRF Token inválido detectado:', req.path);
+//     // Pode ser útil logar mais detalhes aqui
+//     res.status(403).send('Acesso inválido ou sessão expirada. Por favor, recarregue a página.');
+//   } else {
+//     next(err);
+//   }
+// });
 
 // error handler
 app.use(function(err, req, res, next) {
@@ -324,13 +683,13 @@ app.use(function(err, req, res, next) {
 
 });
 
-app.get('/products.json', (req, res) => {
-  // retorno mínimo compatível
-  return res.json({ products: [], limit: req.query.limit || null });
+// Adicionado: Sincroniza o banco de dados e cria as tabelas se não existirem
+sequelize.sync({ alter: true }).then(() => {
+  console.log('Banco de dados sincronizado. Tabelas verificadas/criadas.');
+}).catch(err => {
+  console.error('Erro ao sincronizar o banco de dados:', err);
 });
 
 // Export app e server para uso pelo executável bin/www
 module.exports = app;
 module.exports.server = server;
-
-

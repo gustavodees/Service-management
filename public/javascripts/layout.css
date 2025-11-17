@@ -1,0 +1,199 @@
+/* ==========================================================================
+   Estilos Globais e Layout Principal
+   ========================================================================== */
+
+/* Reset básico e box-sizing */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+  margin: 0;
+  background-color: #f4f7f6;
+  color: #333;
+  display: flex;
+  transition: padding-left 0.3s ease; /* Animação do conteúdo ao abrir/fechar menu */
+}
+
+/* Quando o menu está colapsado, o padding do body se ajusta */
+body.sidebar-collapsed {
+  padding-left: 80px;
+}
+
+/* Layout principal que contém o conteúdo da página */
+.main-content {
+  width: 100%;
+  padding: 20px;
+  transition: margin-left 0.3s ease;
+  margin-left: 250px; /* Espaço para o menu lateral expandido */
+}
+
+body.sidebar-collapsed .main-content {
+  margin-left: 80px; /* Espaço para o menu lateral colapsado */
+}
+
+/* ==========================================================================
+   Header Principal
+   ========================================================================== */
+
+.main-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 25px;
+  background-color: #ffffff;
+  border-bottom: 1px solid #e0e0e0;
+  position: fixed;
+  top: 0;
+  left: 250px; /* Alinhado com o menu */
+  right: 0;
+  z-index: 1000;
+  height: 70px;
+  transition: left 0.3s ease;
+}
+
+body.sidebar-collapsed .main-header {
+  left: 80px; /* Ajusta a posição quando o menu está colapsado */
+}
+
+.header-left .toggle-menu a {
+  font-size: 1.5rem;
+  color: #555;
+  text-decoration: none;
+  margin-right: 20px;
+}
+
+.header-left .toggle-menu a:hover {
+  color: #007bff;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.company-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1rem;
+  font-weight: 500;
+  color: #333;
+}
+
+.company-info .emoji {
+  font-size: 1.4rem;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.user-info .user-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-color: #007bff;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 1.1rem;
+}
+
+.user-info .user-name {
+  font-weight: 500;
+}
+
+/* ==========================================================================
+   Menu Lateral (Sidebar)
+   ========================================================================== */
+
+.sidebar {
+  width: 250px;
+  height: 100vh;
+  position: fixed;
+  top: 0;
+  left: 0;
+  background-color: #2c3e50;
+  color: #ecf0f1;
+  padding-top: 20px;
+  transition: width 0.3s ease;
+  overflow-x: hidden;
+  z-index: 1001;
+}
+
+body.sidebar-collapsed .sidebar {
+  width: 80px;
+}
+
+.sidebar .logo {
+  text-align: center;
+  margin-bottom: 30px;
+  padding: 0 15px;
+}
+
+.sidebar .logo img {
+  max-width: 150px;
+  transition: max-width 0.3s ease, opacity 0.3s ease;
+}
+
+body.sidebar-collapsed .sidebar .logo img {
+  max-width: 40px; /* Logo menor quando colapsado */
+}
+
+.sidebar-menu {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.sidebar-menu li a {
+  display: flex;
+  align-items: center;
+  padding: 15px 25px;
+  color: #ecf0f1;
+  text-decoration: none;
+  font-size: 1rem;
+  transition: background-color 0.2s ease, padding-left 0.3s ease;
+  white-space: nowrap; /* Impede que o texto quebre linha */
+}
+
+.sidebar-menu li a:hover, .sidebar-menu li.active a {
+  background-color: #34495e;
+}
+
+.sidebar-menu li a .menu-icon {
+  font-size: 1.2rem;
+  margin-right: 15px;
+  width: 20px; /* Largura fixa para alinhamento */
+  text-align: center;
+  transition: margin-right 0.3s ease;
+}
+
+.sidebar-menu li a .menu-text {
+  opacity: 1;
+  transition: opacity 0.2s ease;
+}
+
+/* Estilos para o menu colapsado */
+body.sidebar-collapsed .sidebar-menu li a {
+  justify-content: center;
+  padding: 15px 0;
+}
+
+body.sidebar-collapsed .sidebar-menu li a .menu-icon {
+  margin-right: 0;
+  font-size: 1.5rem; /* Ícones maiores para melhor visualização */
+}
+
+body.sidebar-collapsed .sidebar-menu li a .menu-text {
+  opacity: 0;
+  width: 0;
+  overflow: hidden;
+}

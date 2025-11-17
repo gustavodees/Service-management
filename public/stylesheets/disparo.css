@@ -1,0 +1,385 @@
+/* ========================================
+   DISPARO DE MENSAGENS - ESTILOS MODERNOS
+   ======================================== */
+
+/* Container Principal */
+.desparo-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Título da Página (herdado de estilos globais, mas com ajustes) */
+.desparo-container .page-title {
+  margin-bottom: 30px;
+}
+
+/* ========================================
+   FORMULÁRIO DE DISPARO
+   ======================================== */
+
+.desparo-form-container {
+  background: var(--container-bg-color);
+  padding: 30px;
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-md);
+  margin-bottom: 30px;
+}
+
+.desparo-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 30px;
+}
+
+.form-section h2 {
+  color: var(--text-color-dark);
+  font-size: 1.25rem;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e9ecef;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+}
+
+/* ========================================
+   CAMPOS DE FORMULÁRIO
+   ======================================== */
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: #495057;
+  font-size: 0.95rem;
+}
+
+.form-group textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #dee2e6;
+  border-radius: var(--border-radius-md);
+  font-size: 1rem;
+  font-family: var(--font-family-base);
+  line-height: 1.6;
+  transition: var(--transition-fast);
+  resize: vertical;
+  background-color: #f8f9fa;
+  min-height: 150px; /* Altura mínima aumentada */
+}
+
+.form-group textarea:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  background-color: var(--container-bg-color);
+  box-shadow: 0 0 0 3px rgba(37, 211, 102, 0.2);
+}
+
+.help-text {
+  font-size: 0.85rem;
+  color: var(--text-color-muted);
+  margin-top: 5px;
+  display: block;
+}
+
+/* ========================================
+   BOTÕES DE AÇÃO
+   ======================================== */
+
+.form-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 15px;
+  justify-content: center; /* <-- Alinha os botões ao centro */
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #e9ecef;
+}
+
+.action-button {
+  background-color: var(--primary-color);
+  color: var(--text-color-light);
+  border: none;
+  padding: 12px 28px;
+  border-radius: var(--border-radius-pill);
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: var(--transition-fast);
+  box-shadow: var(--shadow-sm);
+}
+
+.action-button:hover:not(:disabled) {
+  background-color: var(--primary-hover);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.action-button:disabled {
+  background-color: #adb5bd;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.send-button {
+  /* Já herda o estilo principal */
+}
+
+.clear-button {
+  background-color: #f8f9fa;
+  color: var(--text-color-dark);
+  border: 1px solid #dee2e6;
+}
+
+.clear-button:hover:not(:disabled) {
+  background-color: #e9ecef;
+  border-color: #adb5bd;
+}
+
+/* ========================================
+   CONTAINER DE RESULTADOS
+   ======================================== */
+
+.results-container {
+  background: var(--container-bg-color);
+  padding: 30px;
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-md);
+  margin: 30px 0;
+}
+
+.results-container h2 {
+  font-size: 1.5rem;
+  margin-bottom: 20px;
+  color: var(--text-color-dark);
+  font-weight: 600;
+}
+
+/* Estilos da tabela de resultados */
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.results-table th, .results-table td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.results-table th {
+  font-weight: 600;
+  color: var(--text-color-muted);
+}
+
+.results-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.results-table .status-sent { color: #28a745; font-weight: 500; }
+.results-table .status-error { color: #dc3545; font-weight: 500; }
+
+.results-summary {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #e9ecef;
+  color: var(--text-color-muted);
+}
+.results-summary strong {
+  color: var(--text-color-dark);
+}
+
+.result-error {
+  text-align: center;
+  padding: 30px;
+  background-color: #fff5f5;
+  border-radius: var(--border-radius-md);
+  color: #e53e3e;
+}
+
+/* ========================================
+   INSTRUÇÕES
+   ======================================== */
+
+.desparo-info {
+  background: #f8f9fa;
+  padding: 25px;
+  border-radius: var(--border-radius-lg);
+  margin-top: 30px;
+  border: 1px solid #e9ecef;
+}
+
+.desparo-info h3 {
+  color: var(--text-color-dark);
+  margin-bottom: 15px;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.desparo-info ul {
+  list-style: none;
+  padding-left: 0;
+}
+
+.desparo-info li {
+  margin-bottom: 10px;
+  line-height: 1.6;
+  position: relative;
+  padding-left: 25px;
+  color: var(--text-color-muted);
+}
+
+.desparo-info li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  color: var(--primary-color);
+  font-weight: bold;
+}
+
+/* ========================================
+   MODAL DE SELEÇÃO DE DISPOSITIVO (NOVO)
+   ======================================== */
+.device-picker-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: fadeIn 0.3s;
+}
+
+.device-picker-box {
+  background: var(--container-bg-color);
+  padding: 24px;
+  border-radius: var(--border-radius-lg);
+  width: 450px;
+  max-width: 95%;
+  box-shadow: var(--shadow-lg);
+  font-family: var(--font-family-base);
+  animation: slideUp 0.4s ease;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.device-picker-box h3 {
+  margin: 0 0 8px 0;
+  color: var(--primary-hover);
+  font-size: 1.2rem;
+}
+
+.device-picker-box p {
+  margin: 0 0 16px 0;
+  color: var(--text-color-muted);
+  font-size: 0.9rem;
+}
+
+.device-picker-list {
+  max-height: 280px;
+  overflow-y: auto;
+  margin-top: 10px;
+  padding-right: 10px; /* Espaço para a scrollbar */
+}
+
+.device-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: var(--border-radius-md);
+  cursor: pointer;
+  margin-bottom: 8px;
+  border: 1px solid #eee;
+  transition: var(--transition-fast);
+}
+
+.device-picker-item:hover {
+  background-color: #f8f9fa;
+  border-color: #dee2e6;
+}
+
+.device-picker-item.selected {
+  background-color: #e8f8f2;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(37, 211, 102, 0.2);
+}
+
+.device-picker-item .source-icon {
+  font-size: 1.2rem;
+}
+.device-picker-item .source-icon.whatsapp { color: #25D366; }
+.device-picker-item .source-icon.chatbot { color: #1e88e5; }
+
+.device-picker-item .device-label {
+  flex: 1;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text-color-dark);
+}
+
+.device-picker-item .device-time {
+  color: var(--text-color-muted);
+  font-size: 0.85rem;
+}
+
+.device-picker-item input[type="radio"] {
+  margin-left: auto;
+}
+
+.device-picker-footer {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
+.device-picker-footer button {
+  padding: 10px 20px;
+  font-size: 0.9rem;
+  /* Estilos herdados de .action-button */
+}
+
+
+/* ========================================
+   RESPONSIVIDADE
+   ======================================== */
+
+@media (max-width: 992px) {
+  .desparo-form {
+    grid-template-columns: 1fr;
+    gap: 25px;
+  }
+}
+
+@media (max-width: 768px) {
+  .desparo-form-container, .results-container, .desparo-info {
+    padding: 20px;
+  }
+
+  .form-actions {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .action-button {
+    width: 100%;
+    justify-content: center;
+  }
+}

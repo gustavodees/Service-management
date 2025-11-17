@@ -1,0 +1,63 @@
+/* --- Estilos para a Página de Logs de Atividade --- */
+
+/* Card de Filtros */
+.filter-card {
+  background-color: #fff;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  margin-bottom: 20px;
+}
+
+.filter-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); /* Cria colunas responsivas */
+  gap: 1.25rem; /* Espaçamento entre os filtros */
+  align-items: end; /* Alinha os itens na parte inferior da célula do grid */
+}
+
+.filter-form .form-group {
+  margin-bottom: 0; /* Remove a margem padrão do form-group */
+}
+
+/* Badges de Ação */
+.badge-log {
+  padding: 0.4em 0.6em;
+  font-size: 0.8em;
+  font-weight: 600;
+  border-radius: 0.25rem;
+}
+.badge-log.log-success { background-color: #d1fae5; color: #065f46; }
+.badge-log.log-change { background-color: #fee2e2; color: #991b1b; }
+.badge-log.log-info { background-color: #dbeafe; color: #1e40af; }
+.badge-log.log-default { background-color: #e5e7eb; color: #4b5563; }
+
+/* Estilos para a Tabela de Logs */
+.logs-table {
+  table-layout: fixed;
+  width: 100%;
+  border-collapse: collapse; /* Une as bordas das células */
+  border: 1px solid #dee2e6; /* Borda externa da tabela */
+}
+
+.logs-table th, .logs-table td {
+  vertical-align: middle !important;
+  padding: 12px 10px;
+  word-wrap: break-word;
+  border: 1px solid #dee2e6; /* Adiciona as linhas separadoras */
+}
+
+.logs-table thead th {
+  background-color: #f8f9fa; /* Fundo sutil para o cabeçalho */
+}
+
+/* Definição das larguras das colunas */
+.col-usuario { width: 18%; }
+.col-acao { width: 15%; }
+.col-detalhes { width: 32%; }
+.col-ip { width: 15%; }
+.col-data { width: 20%; }
+
+.logs-table .col-data, .logs-table .col-ip {
+  white-space: nowrap;
+}

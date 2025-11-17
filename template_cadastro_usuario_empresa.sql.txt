@@ -1,0 +1,52 @@
+-- =====================================================================
+-- TEMPLATE SQL PARA CADASTRAR NOVA EMPRESA E USUÁRIO ADMIN
+-- =====================================================================
+-- VERSÃO SIMPLIFICADA
+--
+-- Instruções:
+-- 1. **IMPORTANTE**: Substitua `seu_banco_de_dados` pelo nome do seu banco de dados na linha `USE \`seu_banco_de_dados\`;`.
+-- 2. Substitua os valores de exemplo para a empresa e o usuário.
+-- 3. Execute este script no seu banco de dados.
+--
+-- O script irá:
+--   a. CRIAR uma nova empresa com os dados fornecidos.
+--   b. CRIAR um novo usuário administrador para essa nova empresa.
+--
+-- IMPORTANTE:
+-- As senhas já estão no formato BCRYPT. Para gerar novas, use uma
+-- ferramenta online de geração de hash BCrypt (custo/rounds = 10)
+-- ou crie um usuário temporário pela aplicação e copie o hash do banco.
+--
+-- =====================================================================
+
+-- ETAPA 0: Selecionar o banco de dados
+-- SUBSTITUA 'seu_banco_de_dados' ABAIXO PELO NOME CORRETO DO SEU BANCO.
+USE `seu_banco_de_dados`;
+
+-- Inicia uma transação para garantir a integridade dos dados.
+START TRANSACTION;
+
+-- Defina os valores para a empresa e o novo admin aqui
+SET @cnpj_empresa = '55666777000188'; -- CNPJ da nova empresa
+SET @nome_fantasia = 'Nova Empresa Fácil';
+SET @razao_social = 'Nova Empresa Fácil LTDA';
+-- Senha 'senha_empresa_123' em formato BCrypt
+SET @senha_bcrypt_empresa = '$2a$10$pL0Bcks1KyL8xT.rXo5Wyuw3xIy/FguXRv3OSsNZKWbKP.AudNMpq';
+
+SET @nome_admin = 'Admin da Nova Empresa';
+SET @email_admin = 'admin.novo@facil.com';
+-- Senha '123456' em formato BCrypt
+SET @senha_bcrypt_admin = '$2a$10$pL0Bcks1KyL8xT.rXo5Wyuw3xIy/FguXRv3OSsNZKWbKP.AudNMpq';
+
+-- ETAPA 1: Criação da Empresa
+-- Insere a nova empresa com status 2 (aprovado)
+INSERT INTO `empresas` (`nome_fantasia`, `razao_social`, `cnpj`, `status`, `senha_empresa`, `created_at`)
+VALUES (@nome_fantasia, @razao_social, @cnpj_empresa, 2, @senha_bcrypt_empresa, NOW());
+
+-- ETAPA 2: Criação do Usuário Administrador
+-- Insere o novo usuário, associando-o à empresa recém-criada
+INSERT INTO `usuarios` (`empresa_id`, `nome`, `email`, `senha`, `tipo`, `created_at`)
+VALUES (LAST_INSERT_ID(), @nome_admin, @email_admin, @senha_bcrypt_admin, 'admin', NOW());
+
+-- Confirma as alterações no banco de dados
+COMMIT;

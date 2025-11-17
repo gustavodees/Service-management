@@ -1,0 +1,345 @@
+/* Estilos para a página de tabulação */
+.container-tabulacao {
+  padding: 20px;
+  margin-left: 30px; /* alinhado com sidebar (header.css body margin-left) */
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f5f5f5;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  width: calc(100% - 30px); /* evita exceder a largura da viewport */
+  box-sizing: border-box;
+  overflow-x: hidden; /* remove a barra de rolagem horizontal */
+}
+
+.titulo-tabulacao {
+  text-align: center;
+  color: #2c3e50;
+  margin-bottom: 10px;
+  font-size: 25px;
+  font-weight: 600;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Botões de status no topo */
+.botoes-status {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 15px;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+  width: 101%;
+  box-sizing: border-box;
+}
+
+.btn-status {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: white;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  white-space: nowrap;
+  flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.btn-status:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+}
+
+/* Cores específicas para cada status baseadas na imagem */
+.btn-status.aniversariantes {
+  background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+}
+
+.btn-status.sem-possibilidade {
+  background: linear-gradient(135deg, #dc3545 0%, #a71e2a 100%);
+}
+
+.btn-status.conversa-inativa {
+  background: linear-gradient(135deg, #ffc107 0%, #d39e00 100%);
+  color: white;
+}
+
+.btn-status.mudancas-cadastrais {
+  background: linear-gradient(135deg, #fd7e14 0%, #e55a00 100%);
+}
+
+.btn-status.negocio-fechado {
+  background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
+}
+
+.btn-status.sem-interesse {
+  background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+}
+
+/* Área principal de mensagens */
+.area-mensagens {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 30px;
+  margin-top: 0;
+  width: 100%;
+  flex: 1;
+  min-height: calc(100vh - 200px);
+}
+
+/* Lista de conversas */
+.lista-conversas {
+  background: white;
+  border-radius: 12px;
+  padding: 25px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+  border: 1px solid #e9ecef;
+  width: 100%;
+  flex: 1;
+  height: fit-content;
+}
+
+.lista-conversas h3 {
+  margin-top: 0;
+  color: #2c3e50;
+  border-bottom: 3px solid #007bff;
+  padding-bottom: 15px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.conversa-item {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+  transition: all 0.3s ease;
+  border: 1px solid #e9ecef;
+}
+
+.conversa-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+  background: white;
+}
+
+.conversa-info {
+  margin-bottom: 10px;
+}
+
+.nome-cliente {
+  font-weight: bold;
+  font-size: 16px;
+  color: #333;
+}
+
+.telefone-cliente {
+  color: #666;
+  font-size: 14px;
+  margin: 5px 0;
+}
+
+.ultima-mensagem {
+  color: #777;
+  font-size: 13px;
+  margin: 5px 0;
+}
+
+.horario-ultima {
+  color: #999;
+  font-size: 12px;
+}
+
+.botoes-acao {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-ver-conversa, .btn-tabular {
+  padding: 10px 18px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.btn-ver-conversa {
+  background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+  color: white;
+}
+
+.btn-tabular {
+  background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
+  color: white;
+}
+
+.btn-ver-conversa:hover, .btn-tabular:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+/* Detalhes da conversa */
+.detalhes-conversa {
+  background: white;
+  border-radius: 12px;
+  padding: 25px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+  border: 1px solid #e9ecef;
+}
+
+.detalhes-conversa h3 {
+  margin-top: 0;
+  color: #2c3e50;
+  border-bottom: 3px solid #28a745;
+  padding-bottom: 15px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.conversa-conteudo {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 25px;
+  margin-bottom: 25px;
+  min-height: 200px;
+  border: 1px solid #e9ecef;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* Formulário de tabulação */
+.form-tabulacao {
+  margin-top: 25px;
+}
+
+.campo-observacoes {
+  margin-bottom: 25px;
+}
+
+.campo-observacoes label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 14px;
+}
+
+#observacoes {
+  width: 100%;
+  min-height: 100px;
+  padding: 15px;
+  border: 2px solid #e9ecef;
+  border-radius: 8px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 14px;
+  resize: vertical;
+  transition: border-color 0.3s ease;
+  box-sizing: border-box;
+}
+
+#observacoes:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+.botoes-tabulacao {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.btn-tabular-status {
+  padding: 15px 25px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: white;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.btn-tabular-status.aniversariantes {
+  background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+}
+
+.btn-tabular-status.sem-possibilidade {
+  background: linear-gradient(135deg, #dc3545 0%, #a71e2a 100%);
+}
+
+.btn-tabular-status.conversa-inativa {
+  background: linear-gradient(135deg, #ffc107 0%, #d39e00 100%);
+  color: white;
+}
+
+.btn-tabular-status.mudancas-cadastrais {
+  background: linear-gradient(135deg, #fd7e14 0%, #e55a00 100%);
+}
+
+.btn-tabular-status.negocio-fechado {
+  background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
+}
+
+.btn-tabular-status.sem-interesse {
+  background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+}
+
+.btn-tabular-status:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(0,0,0,0.25);
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+  .container-tabulacao {
+    margin-left: 0;
+    padding: 15px;
+    width: 100vw;
+  }
+  
+  .area-mensagens {
+    flex-direction: column;
+    gap: 20px;
+    width: 100%;
+  }
+  
+  .lista-conversas {
+    width: 100%;
+  }
+  
+  .botoes-status {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+    padding: 15px;
+    width: 100%;
+  }
+  
+  .btn-status {
+    font-size: 11px;
+    padding: 10px 16px;
+  }
+  
+  .titulo-tabulacao {
+    font-size: 24px;
+    margin-bottom: 30px;
+  }
+}

@@ -1,41 +1,82 @@
 header(class="sidebar-menu")
   .sidebar-content
     .logo-container
-      img(src="/images/logo.png", alt="MALTY")
+      a(href="/users/atendimento", title="Ir para a Central de Atendimento")
+        img(src="/images/logo.png", alt="Service-management Logo")
+    //- Adicionado: Exibe o nome da empresa logada
+    if locals.nomeEmpresaLogada
+      .company-context
+        span.company-name= locals.nomeEmpresaLogada
     nav.sidebar-nav
       ul.nav-icons
         //- Menus comuns a todos
-        li.nav-item
-          a(href="/conectZap", title="Adicionar WhatsApp")
-            i.icon.fa-brands.fa-whatsapp
-        li.nav-item
-          a(href="/conectBot", title="Robo de Automação para o Whatsapp")
-            i.icon.fa-solid.fa-robot
-        li.nav-item
-          a(href="/users/desparar", title="Disparo de Mensagens")
-            i.icon.fa-solid.fa-plane-departure
-        li.nav-item
+        li.nav-item(data-menu="atendimento", class=(title === 'Central de Atendimento' ? 'active' : ''))
           a(href="/users/atendimento", title="Central de Atendimento")
-            i.icon.fa-solid.fa-headphones
-        li.nav-item
+            i.icon.fas.fa-headset
+            span.nav-text Atendimento
+        li.nav-item(data-menu="conexoes", class=(title === 'Conexões WhatsApp' ? 'active' : ''))
+          a(href="/conectZap", title="Conexões WhatsApp")
+            i.icon.fab.fa-whatsapp
+            span.nav-text Conexões WhatsApp
+        li.nav-item(data-menu="chatbot", class=(title === 'Conexões Robô' ? 'active' : ''))
+          a(href="/conectBot", title="Conexões Robô")
+            i.icon.fas.fa-robot
+            span.nav-text Conexões Robô
+        li.nav-item(data-menu="disparo", class=(title === 'Disparo de Mensagens' ? 'active' : ''))
+          a(href="/users/disparar", title="Disparo de Mensagens")
+            i.icon.fas.fa-paper-plane
+            span.nav-text Disparo em Massa
+        li.nav-item(data-menu="tabulacao", class=(title === 'Tabulação de Clientes' ? 'active' : ''))
           a(href="/users/tabulacao", title="Tabulação de Mensagens")
-            i.icon.fa-solid.fa-calendar-days
-        li.nav-item
+            i.icon.fas.fa-tags
+            span.nav-text Tabulação
+        li.nav-item(data-menu="graficos", class=(title === 'Gráfico de Tabulação' ? 'active' : ''))
           a(href="/users/grafico", title="Gráfico da Tabulação")
-            i.icon.fas.fa-chart-bar
-        //- Menus só para admin (exibir somente se usuarioTipo for 'admin')
-        if typeof usuarioTipo !== 'undefined' && usuarioTipo === 'admin'
-          li.nav-item
+            i.icon.fas.fa-chart-pie
+            span.nav-text Gráficos
+        
+        //- Bloco de Menus de Administrador
+        if usuarioTipo === 'admin'
+          //- Menus exclusivos para o Admin MESTRE (sem empresa)
+          if !usuarioEmpresaId
+            li.nav-item(data-menu="aprovacoes", class=(title === 'Aprovar Empresas' ? 'active' : ''))
+              a(href="/admin/aprovar-empresas", title="Aprovações Pendentes")
+                i.icon.fas.fa-building-user
+                span.nav-text Aprovações
+            li.nav-item(data-menu="gerenciar", class=(title === 'Gerenciar Empresas' ? 'active' : ''))
+              a(href="/admin/gerenciar-empresas", title="Gerenciar Empresas")
+                i.icon.fas.fa-briefcase
+                span.nav-text Gerenciar
+          
+          //- Menus para TODOS os admins (Mestre e de Empresa)
+          li.nav-item(data-menu="cadastrar", class=(title === 'Cadastro de Usuário' ? 'active' : ''))
             a(href="/cadastro", title="Cadastro de Usuário")
-              i.icon.fa-solid.fa-user-plus
-          li.nav-item
+              i.icon.fas.fa-user-plus
+              span.nav-text Cadastrar Usuário
+          li.nav-item(data-menu="listar", class=(title === 'Usuários Cadastrados' ? 'active' : ''))
             a(href="/usuariocadastrado", title="Usuários Cadastrados")
-              i.icon.fa-solid.fa-circle-user
-          li.nav-item
+              i.icon.fas.fa-users
+              span.nav-text Listar Usuários
+          li.nav-item(data-menu="ia", class=(title === 'Treinamento da IA' ? 'active' : ''))
             a(href="/ia", title="Treinamento da IA")
-              i.icon.fa-solid.fa-diagram-project
+              i.icon.fas.fa-brain
+              span.nav-text Treinamento IA
+          
+          //- Menu de Logs
+          li.nav-item(data-menu="logs", class=(title === 'Logs de Atividade' ? 'active' : ''))
+            a(href="/admin/logs", title="Logs de Atividade")
+              i.icon.fas.fa-clipboard-list
+              span.nav-text Logs
 
-    // ícone fixado ao final do header/sidebar
-    .share-fixed
-      a.share-btn(href="/" title="Voltar para o Login")
-        i.fa-solid.fa-share-from-square
+    .sidebar-footer
+      //- Botão Meu Perfil
+      .nav-item(class=(title === 'Meu Perfil' ? 'active' : ''))
+        a(href="/meu-perfil", title="Meu Perfil")
+          i.icon.fas.fa-user-cog
+          span.nav-text Meu Perfil
+
+      //- Botão de logout
+      .nav-item
+        a(href="/logout", title="Sair do Sistema")
+          i.icon.fa-solid.fa-right-from-bracket
+          span.nav-text Sair

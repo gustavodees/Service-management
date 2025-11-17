@@ -1,23 +1,49 @@
-extends layout
+doctype html
+html(lang="pt-BR")
+  head
+    meta(charset="UTF-8")
+    meta(name="viewport", content="width=device-width, initial-scale=1.0")
+    title= title
+    link(rel="stylesheet", href="/stylesheets/login.css")
+    link(href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap", rel="stylesheet")
 
-block content
-  .login-container
-    .login-left
-      // imagem grande (substitua o src se necessário)
-      img.login-hero(src="/images/malty login.jpg", alt="Malty")
-    .login-right
+  body
+    .login-container
       .login-box
-        .logo
-          img(src="/images/logo.png", alt="MALTY")
+        header
+          h1.logo Service-management
+          h2 Acesso ao Painel
+
         if error
-          .error-message #{error}
-        form.login-form(action="/login", method="post")
-          .form-groupe
-            label(for="email") E-mail
-            input#email(type="email", name="email", placeholder="Digite seu email", required)
-          
-          .form-groupe
+          .alert.alert-danger= error
+        if success
+          .alert.alert-success= success
+
+        // Etapa 1: Inserir CNPJ
+        #cnpj-step(style=showLoginForm ? 'display: none;' : 'display: block;')
+          .form-group
+            label(for="cnpj-input") CNPJ da Empresa
+            input(type="text", id="cnpj-input", name="cnpj_temp", placeholder="00.000.000/0000-00", required)
+          button(type="button", class="btn-submit", id="check-cnpj-btn") Continuar          
+
+        // Etapa 2: Fazer Login (inicialmente oculto)
+        form(action="/login", method="POST", id="login-form", style=showLoginForm ? 'display: block;' : 'display: none;')
+          #company-info.company-display
+            p Acessando como:
+            h3#company-name= nome_fantasia || ''
+          // Adicionado: Título para o login do host
+          input(type="hidden", id="cnpj-hidden", name="cnpj", value=cnpj || '')
+          .form-group
+            label(for="email") Email
+            input(type="email", id="email", name="email", placeholder="Digite seu email", required, value=email || '')
+          .form-group
             label(for="senha") Senha
-            input#senha(type="password", name="senha", placeholder="Digite sua senha", required)
-          
-          button.btn-entrar(type="submit") ENTRAR
+            input(type="password", id="senha", name="senha", placeholder="Digite sua senha", required)
+          button(type="submit", class="btn-submit") Entrar
+
+        .links
+          a(href="/cadastro-empresa") Não tem uma conta? Cadastre sua empresa
+          a(href="/") Voltar para a página inicial
+
+    script(src="https://cdn.jsdelivr.net/npm/cpf-cnpj-validator/dist/bundle.js")
+    script(src="/javascripts/login.js")

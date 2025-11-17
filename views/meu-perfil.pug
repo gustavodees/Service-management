@@ -1,0 +1,44 @@
+extends layout
+
+block head
+  link(rel="stylesheet", href="/stylesheets/dashboard.css")
+
+block content
+  include header
+  .page-container
+    .page-header
+      div
+        h1.page-title Meu Perfil
+        p.page-subtitle Gerencie suas informações e segurança da conta.
+
+    .content-card(style="max-width: 600px; margin: 0 auto;")
+      if error
+        .alert.alert-danger= error
+      if success
+        .alert.alert-success= success
+
+      form(method="POST", action="/meu-perfil")
+        h3.card-title Informações Pessoais
+        .form-group
+          label(for="nome") Nome Completo
+          input.form-control(type="text", id="nome", name="nome", value=usuario ? usuario.nome : '', required)
+
+        hr.my-4
+
+        h3.card-title Alterar Senha
+        p.text-muted Deixe os campos de senha em branco para não alterá-la.
+
+        .form-group
+          label(for="senha_atual") Senha Atual
+          input.form-control(type="password", id="senha_atual", name="senha_atual", placeholder="Necessária para alterar a senha")
+
+        .form-group
+          label(for="nova_senha") Nova Senha
+          input.form-control(type="password", id="nova_senha", name="nova_senha", placeholder="Mínimo de 8 caracteres")
+
+        .form-group
+          label(for="confirmar_nova_senha") Confirmar Nova Senha
+          input.form-control(type="password", id="confirmar_nova_senha", name="confirmar_nova_senha", placeholder="Repita a nova senha")
+
+        .form-actions
+          button.btn.btn-primary(type="submit") Salvar Alterações

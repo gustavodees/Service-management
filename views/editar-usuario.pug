@@ -1,0 +1,39 @@
+extends layout
+
+block head
+  link(rel="stylesheet", href="/stylesheets/dashboard.css")
+
+block content
+  include header
+  .page-container
+    .page-header
+      div
+        h1.page-title Editar Usuário
+        p.page-subtitle Altere as informações do usuário abaixo.
+
+    .content-card
+      if error
+        .alert.alert-danger= error
+
+      form(method="POST", action=`/editar-usuario/${usuario.id}`)
+        .form-group
+          label(for="nome") Nome do Usuário
+          input.form-control(type="text", id="nome", name="nome", value=usuario.nome, required)
+
+        .form-group
+          label(for="email") Email
+          input.form-control(type="email", id="email", name="email", value=usuario.email, required)
+
+        .form-group
+          label(for="tipo") Tipo de Usuário
+          select.form-control(id="tipo", name="tipo")
+            option(value="admin", selected=usuario.tipo === 'admin') Administrador
+            option(value="funcionario", selected=usuario.tipo === 'funcionario') Funcionário
+
+        .form-group
+          label(for="senha") Nova Senha (Opcional)
+          input.form-control(type="password", id="senha", name="senha", placeholder="Deixe em branco para não alterar")
+
+        .form-actions
+          button.btn.btn-primary(type="submit") Salvar Alterações
+          a.btn.btn-secondary(href="/usuariocadastrado") Cancelar

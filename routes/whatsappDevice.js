@@ -33,7 +33,12 @@ const WhatsappDevice = sequelizeUser.define('whatsapp_devices', {
     user_id: {
         type: DataTypes.INTEGER,
         allowNull: false // Cada device deve pertencer a um usuário
-    }
+    },
+    empresa_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true, // Permitir nulo para o admin host, se aplicável
+        references: { model: 'empresas', key: 'id' }
+    },
 }, { 
     tableName: 'whatsapp_devices',
     timestamps: false 

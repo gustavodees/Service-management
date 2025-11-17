@@ -1,0 +1,40 @@
+extends layout
+
+block head
+  link(rel="stylesheet", href="/stylesheets/dashboard.css")
+
+block content
+  include header
+  .page-container
+    .page-header
+      div
+        h1.page-title Editar Empresa
+        p.page-subtitle= empresa.nome_fantasia
+
+    .content-card(style="max-width: 700px; margin: 0 auto;")
+      form(action=`/admin/editar-empresa/${empresa.id}`, method="POST")
+        .form-group
+          label(for="nome_fantasia") Nome Fantasia
+          input#nome_fantasia.form-control(type="text", name="nome_fantasia", value=empresa.nome_fantasia, required)
+
+        .form-group
+          label(for="razao_social") Razão Social
+          input#razao_social.form-control(type="text", name="razao_social", value=empresa.razao_social)
+
+        .form-group
+          label(for="cnpj") CNPJ
+          input#cnpj.form-control(type="text", name="cnpj", value=empresa.cnpj, required)
+
+        .form-group
+          label(for="status") Status
+          select#status.form-control(name="status", required)
+            option(value="2", selected=empresa.status === 2) Aprovado
+            option(value="1", selected=empresa.status === 1) Pendente
+            option(value="-1", selected=empresa.status === -1) Bloqueado
+            option(value="-2", selected=empresa.status === -2) Rejeitado
+
+        .form-row.mt-4
+          .col
+            a.btn.btn-secondary.btn-block(href="/admin/gerenciar-empresas") Cancelar
+          .col
+            button.btn.btn-primary.btn-block(type="submit") Salvar Alterações

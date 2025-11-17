@@ -1,0 +1,66 @@
+doctype html
+html(lang="pt-BR")
+  head
+    meta(charset="UTF-8")
+    meta(name="viewport", content="width=device-width, initial-scale=1.0")
+    title= title
+    link(rel="stylesheet", href="/stylesheets/cadastro-empresa.css")
+    link(href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap", rel="stylesheet")
+
+  body
+    .container
+      header
+        h1.logo Service-management
+        h2 Crie sua conta de empresa
+
+      if error
+        .alert.alert-danger= error
+      if success
+        .alert.alert-success= success
+
+      form(action="/cadastro-empresa", method="POST")
+        .form-section
+          h3 Dados da Empresa
+          .form-group
+            label(for="nome_fantasia") Nome Fantasia
+            input(type="text", id="nome_fantasia", name="nome_fantasia", required)
+          .form-group
+            label(for="razao_social") Razão Social (Opcional)
+            input(type="text", id="razao_social", name="razao_social")
+          .form-group
+            label(for="cnpj") CNPJ
+            input(type="text", id="cnpj", name="cnpj", required)
+          .form-group
+            label(for="senha_empresa") Senha da Empresa (para o gestor)
+            input(type="password", id="senha_empresa", name="senha_empresa", required)
+
+        .form-section
+          h3 Usuário Administrador
+          .form-group
+            label(for="nome_usuario") Nome Completo
+            input(type="text", id="nome_usuario", name="nome_usuario", required)
+          .form-group
+            label(for="email") Email
+            input(type="email", id="email", name="email", required)
+          .form-group
+            label(for="senha") Senha
+            input(type="password", id="senha", name="senha", required)
+
+        button(type="submit", class="btn-submit") Cadastrar e Acessar
+
+      .login-link
+        a(href="/login") Já possui uma conta? Faça o login
+
+    script.
+      document.addEventListener('DOMContentLoaded', function() {
+        const cnpjInput = document.getElementById('cnpj');
+
+        cnpjInput.addEventListener('input', (e) => {
+          let value = e.target.value.replace(/\D/g, '');
+          value = value.replace(/^(\d{2})(\d)/, '$1.$2');
+          value = value.replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3');
+          value = value.replace(/\.(\d{3})(\d)/, '.$1/$2');
+          value = value.replace(/(\d{4})(\d)/, '$1-$2');
+          e.target.value = value.slice(0, 18); // Limita o tamanho para o formato do CNPJ
+        });
+      });

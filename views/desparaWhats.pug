@@ -1,49 +1,56 @@
 extends layout
 
+block head
+  link(rel="stylesheet", href="/stylesheets/dashboard.css")
+  script(src="/javascripts/dashboard.js" defer)
+
 block content
   include header
-  .desparo-container
-    h1.page-title 
-      i.fa-solid.fa-plane-departure.title-icon
-      | Disparo de Mensagens WhatsApp
-    
-    .desparo-form-container
-      form.desparo-form#desparo-form
-        .form-section
-          h2 Lista de Números
-          .form-group
-            label(for="numeros") Números de WhatsApp (um por linha):
-            textarea#numeros(name="numeros", placeholder="5511999999999\n5511888888888\n...", rows="10", required)
-            small.help-text Digite um número por linha, incluindo o código do país (55) e DDD
+  .page-container
+    .page-header
+      div
+        h1.page-title Disparo de Mensagens
+        p.page-subtitle Envie campanhas e comunicados em massa.
+
+    .content-card
+      .desparo-container
+        .desparo-form-container
+          form.desparo-form#desparo-form
+            .form-section
+              h2 Lista de Números
+              .form-group
+                label(for="numeros") Números de WhatsApp (um por linha):
+                textarea#numeros(name="numeros", placeholder="5511999999999\n5511888888888\n...", rows="10", required)
+                small.help-text Digite um número por linha, incluindo o código do país (55) e DDD
+            
+            .form-section
+              h2 Mensagem
+              .form-group
+                label(for="mensagem") Texto da Mensagem:
+                textarea#mensagem(name="mensagem", placeholder="Digite sua mensagem aqui...", rows="8", required)
+                small.help-text A mensagem será enviada para todos os números da lista
+            
+            .form-actions
+              button.action-button.send-button#send-btn(type="submit")
+                i.fa-solid.fa-paper-plane
+                | Enviar Mensagens
+              
+              button.action-button.clear-button#clear-btn(type="button")
+                i.fa-solid.fa-eraser
+                | Limpar Campos
         
-        .form-section
-          h2 Mensagem
-          .form-group
-            label(for="mensagem") Texto da Mensagem:
-            textarea#mensagem(name="mensagem", placeholder="Digite sua mensagem aqui...", rows="8", required)
-            small.help-text A mensagem será enviada para todos os números da lista
+        .results-container#results-container(style="display: none;")
+          h2 Resultado do Disparo
+          .results-content#results-content
         
-        .form-actions
-          button.action-button.send-button#send-btn(type="submit")
-            i.fa-solid.fa-paper-plane
-            | Enviar Mensagens
-          
-          button.action-button.clear-button#clear-btn(type="button")
-            i.fa-solid.fa-eraser
-            | Limpar Campos
-    
-    .results-container#results-container(style="display: none;")
-      h2 Resultado do Disparo
-      .results-content#results-content
-    
-    .desparo-info
-      h3 Instruções:
-      ul
-        li Digite os números no formato internacional (5511999999999)
-        li Um número por linha
-        li Verifique se o WhatsApp está conectado na página principal
-        li A mensagem será enviada para todos os números válidos da lista
-        li Aguarde o processamento completo antes de fazer outro disparo
+        .desparo-info
+          h3 Instruções:
+          ul
+            li Digite os números no formato internacional (5511999999999)
+            li Um número por linha
+            li Verifique se o WhatsApp está conectado na página principal
+            li A mensagem será enviada para todos os números válidos da lista
+            li Aguarde o processamento completo antes de fazer outro disparo
   
   script.
     document.addEventListener('DOMContentLoaded', function() {

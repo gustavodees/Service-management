@@ -1,0 +1,33 @@
+doctype html
+html(lang="pt-BR")
+  head
+    meta(charset="UTF-8")
+    meta(name="viewport", content="width=device-width, initial-scale=1.0")
+    title= title || 'Acesso Restrito'
+    // Reutilizando o mesmo estilo da página de login principal
+    link(rel="stylesheet", href="/stylesheets/login.css")
+    link(href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap", rel="stylesheet")
+
+  body
+    .login-container
+      .login-box
+        header
+          h1.logo Service-management
+          h2 Acesso Restrito ao Sistema
+
+        if error
+          .alert.alert-danger= error
+        if success
+          .alert.alert-success= success
+
+        form(action="/admin/login", method="POST")
+          .form-group
+            label(for="email") Email
+            input(type="email", id="email", name="email", placeholder="Digite seu email de administrador", required, value=email || '')
+          .form-group
+            label(for="senha") Senha
+            input(type="password", id="senha", name="senha", placeholder="Digite sua senha", required)
+          button(type="submit", class="btn-submit") Entrar
+
+        .links
+          a(href="/") Voltar para o acesso de empresas

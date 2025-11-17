@@ -24,10 +24,25 @@ const lastMassSend = {}; // { deviceId: ISOString }
 function getHttpEffectiveUserId(req) {
   try {
     const sess = req.session || {};
+    // Retorna o ID do usuário impersonado, se houver, senão o ID do usuário logado.
     if (sess.usuario && sess.usuario.tipo === 'admin' && sess.impersonateUserId) {
       return sess.impersonateUserId;
     }
     return sess.usuario ? sess.usuario.id : null;
+  } catch {
+    return null;
+  }
+}
+
+// NOVO: Helper para pegar o empresa_id correto (considerando impersonação/admin)
+function getHttpEffectiveEmpresaId(req) {
+  try {
+    const sess = req.session || {};
+    // Se admin estiver impersonando, o empresa_id é o do usuário impersonado (que será buscado no DB).
+    // Por simplicidade aqui, vamos assumir que o empresa_id do admin que impersona é o correto.
+    // A lógica ideal seria buscar o usuário impersonado e pegar o empresa_id dele.
+    // Por enquanto, usamos o da sessão principal.
+    return sess.usuario ? sess.usuario.empresa_id : null;
   } catch {
     return null;
   }
@@ -42,6 +57,16 @@ function getUserIdFromRequest(request) {
       return sess.impersonateUserId;
     }
     return sess.usuario ? sess.usuario.id : null;
+  } catch {
+    return null;
+  }
+}
+
+// NOVO: Helper para pegar o empresa_id do usuário da sessão do WebSocket
+function getEmpresaIdFromRequest(request) {
+  try {
+    const sess = request.session || {};
+    return sess.usuario ? sess.usuario.empresa_id : null;
   } catch {
     return null;
   }
@@ -74,7 +99,7 @@ function broadcastToAtendimento(message, userId = null) {
 
 // Rota GET da página WhatsApp
 router.get('/', (req, res) => {
-  res.render('whatsapp', { title: 'Conectar WhatsApp - Sistema Malty' });
+  res.render('whatsapp', { title: 'Conectar WhatsApp - Sistema Service' });
 });
 
 // Função auxiliar para gerar nomes de arquivo padrão
@@ -158,7 +183,7 @@ async function sendChatsToAll(deviceId) {
       }
       allDeviceContacts[deviceId] = cachedList;
     } catch (dbErr) {
-      console.warn('sendChatsToAll fast-path DB falhou:', dbErr && dbErr.message ? dbErr.message : dbErr);
+      console.error('[sendChatsToAll] Falha no fast-path (DB):', dbErr);
     }
 
     // 2) SLOW PATH (background): busca dados completos do client e broadcast quando pronto
@@ -192,7 +217,7 @@ async function sendChatsToAll(deviceId) {
           broadcastToAtendimento({ type: 'whatsapp-contacts-updated', allContacts: chatList, deviceId }, userId);
         }
       } catch (err) {
-        console.error('sendChatsToAll slow-path erro:', err && err.message ? err.message : err);
+        console.error(`[sendChatsToAll] Erro no slow-path para device ${deviceId}:`, err);
       }
     })();
 
@@ -200,7 +225,7 @@ async function sendChatsToAll(deviceId) {
     console.error('Erro em sendChatsToAll:', error);
     const userId = clients[deviceId] ? clients[deviceId].userId : null;
     if (userId) {
-      broadcastToUser(userId, { type: 'error', status: 'Falha ao buscar chats', deviceId });
+      broadcastToUser(userId, { type: 'error', message: 'Falha ao buscar chats', deviceId });
     }
   }
 }
@@ -227,6 +252,7 @@ async function processReceivedMedia(message, chatId, deviceId) {
 
     const idSerialized = message.id && message.id._serialized ? message.id._serialized : `${chatId}_${message.timestamp}_${message.fromMe}`;
     const userId = clients[deviceId] ? clients[deviceId].userId : null;
+    const empresaId = clients[deviceId] ? clients[deviceId].empresa_id : null; // Adicionado
 
     // Salva/atualiza WhatsappMessage (mantendo data por compatibilidade UI)
     try {
@@ -237,6 +263,7 @@ async function processReceivedMedia(message, chatId, deviceId) {
           chatId,
           deviceId,
           userId,
+          empresa_id: empresaId, // Adicionado
           body: message.body || null,
           fromMe: !!message.fromMe,
           type: message.type || 'media',
@@ -252,7 +279,7 @@ async function processReceivedMedia(message, chatId, deviceId) {
         }
       }
     } catch (dbErr) {
-      console.error('Erro ao salvar WhatsappMessage para mídia:', dbErr);
+      console.error(`[processReceivedMedia] Erro ao salvar WhatsappMessage para mídia (msg: ${idSerialized}):`, dbErr);
     }
 
     // Salva também no WhatsappMedia (index e vínculo por user/device)
@@ -271,6 +298,7 @@ async function processReceivedMedia(message, chatId, deviceId) {
           chatId,
           deviceId,
           userId,
+          empresa_id: empresaId, // Adicionado
           filename: media.filename || getDefaultFilename(media.mimetype),
           mimetype: media.mimetype || null,
           size: media.data ? Buffer.from(media.data, 'base64').length : null,
@@ -279,7 +307,7 @@ async function processReceivedMedia(message, chatId, deviceId) {
         });
       }
     } catch (mErr) {
-      console.error('Erro ao salvar WhatsappMedia:', mErr);
+      console.error(`[processReceivedMedia] Erro ao salvar WhatsappMedia (msg: ${idSerialized}):`, mErr);
     }
 
     // broadcast existente
@@ -305,7 +333,7 @@ async function processReceivedMedia(message, chatId, deviceId) {
     }
 
   } catch (error) {
-    console.error('Erro ao processar mídia recebida:', error);
+    console.error(`[processReceivedMedia] Erro ao processar mídia recebida para o device ${deviceId}:`, error);
   }
 }
 
@@ -345,6 +373,7 @@ function initializeWhatsAppClient(deviceId, userId) {
   clients[deviceId].isClientReady = false;
   clients[deviceId].userId = userId;
   clients[deviceId].isInitializing = true;
+  clients[deviceId].empresa_id = getEmpresaIdFromRequest({ session: { usuario: { id: userId, empresa_id: clients[deviceId].empresa_id } } }); // Adicionado
   clients[deviceId].qr = null;
   clients[deviceId].hasSession = clients[deviceId].hasSession || false;
 
@@ -362,13 +391,15 @@ function initializeWhatsAppClient(deviceId, userId) {
       if (!deviceCreated) {
         deviceCreated = true;
         const exists = await WhatsappDevice.findOne({ where: { device_id: deviceId } });
+        const empresaId = clients[deviceId] ? clients[deviceId].empresa_id : null;
         if (!exists) {
           await WhatsappDevice.create({
             device_id: deviceId,
             status: 'connecting',
             last_connected: new Date(),
             created_at: new Date(),
-            user_id: userId
+            user_id: userId,
+            empresa_id: empresaId // Adicionado
           });
         }
       }
@@ -383,7 +414,7 @@ function initializeWhatsAppClient(deviceId, userId) {
         },
         (err, url) => {
           if (err) {
-            broadcastToUser(userId, { type: 'error', status: 'Falha ao gerar QR Code', deviceId });
+            broadcastToUser(userId, { type: 'error', message: 'Falha ao gerar QR Code', deviceId });
             return;
           }
           // salva QR no objeto para rota /qrcode/:deviceId retornar também
@@ -398,7 +429,7 @@ function initializeWhatsAppClient(deviceId, userId) {
         }
       );
     } catch (e) {
-      console.warn('qr handler erro:', e && e.message ? e.message : e);
+      console.error(`[client.on('qr')] Erro ao processar QR para device ${deviceId}:`, e);
     }
   });
 
@@ -407,6 +438,7 @@ function initializeWhatsAppClient(deviceId, userId) {
     if (!clients[deviceId]) clients[deviceId] = {};
     clients[deviceId].hasSession = true;
     clients[deviceId].qr = null;
+    clients[deviceId].empresa_id = getEmpresaIdFromRequest({ session: { usuario: { id: userId, empresa_id: clients[deviceId].empresa_id } } }); // Adicionado
     const uid = clients[deviceId].userId;
     if (uid) broadcastToUser(uid, { type: 'authenticated', status: 'WhatsApp autenticado', deviceId });
   });
@@ -418,6 +450,7 @@ function initializeWhatsAppClient(deviceId, userId) {
       clients[deviceId].isClientReady = true;
       clients[deviceId].qr = null;
       clients[deviceId].isInitializing = false;
+      clients[deviceId].empresa_id = getEmpresaIdFromRequest({ session: { usuario: { id: userId, empresa_id: clients[deviceId].empresa_id } } }); // Adicionado
       clients[deviceId].hasSession = true;
 
       // tenta extrair número/identificador do client (formas comuns)
@@ -454,20 +487,20 @@ function initializeWhatsAppClient(deviceId, userId) {
         try {
           if (detectedNumber) {
             await WhatsappDevice.update(
-              { number: detectedNumber, status: 'connected', last_connected: new Date() },
+              { number: detectedNumber, status: 'connected', last_connected: new Date(), empresa_id: clients[deviceId].empresa_id },
               { where: { device_id: deviceId } }
-            ).catch(()=>{});
+            ).catch((err) => console.error(`[ready] Falha ao atualizar device ${deviceId} com número:`, err));
           } else {
             await WhatsappDevice.update(
-              { status: 'connected', last_connected: new Date() },
+              { status: 'connected', last_connected: new Date(), empresa_id: clients[deviceId].empresa_id },
               { where: { device_id: deviceId } }
-            ).catch(()=>{});
+            ).catch((err) => console.error(`[ready] Falha ao atualizar device ${deviceId} como conectado:`, err));
           }
 
           // sincronização pesada em background
           await sendChatsToAll(deviceId);
         } catch (bgErr) {
-          console.error('Background sync após ready falhou:', bgErr && bgErr.message ? bgErr.message : bgErr);
+          console.error(`[ready] Falha na sincronização em background para device ${deviceId}:`, bgErr);
         }
       })();
 
@@ -483,7 +516,7 @@ function initializeWhatsAppClient(deviceId, userId) {
       clients[deviceId].qr = null;
     }
     const uid = clients[deviceId] ? clients[deviceId].userId : null;
-    if (uid) broadcastToUser(uid, { type: 'auth_failure', status: `Falha na autenticação: ${msg}`, deviceId });
+    if (uid) broadcastToUser(uid, { type: 'auth_failure', message: `Falha na autenticação: ${msg}`, deviceId });
   });
 
   client.on('disconnected', async (reason) => {
@@ -496,11 +529,11 @@ function initializeWhatsAppClient(deviceId, userId) {
         // manter hasSession true para evitar reexibir QR desnecessário
       }
       const uid = clients[deviceId] ? clients[deviceId].userId : null;
-      if (uid) broadcastToUser(uid, { type: 'disconnected', status: `WhatsApp desconectado: ${reason}`, deviceId });
+      if (uid) broadcastToUser(uid, { type: 'disconnected', message: `WhatsApp desconectado: ${reason}`, deviceId });
       delete allDeviceContacts[deviceId];
-      await WhatsappDevice.update({ status: 'disconnected' }, { where: { device_id: deviceId } }).catch(()=>{});
+      await WhatsappDevice.update({ status: 'disconnected' }, { where: { device_id: deviceId } }).catch((err) => console.error(`[disconnected] Falha ao atualizar status do device ${deviceId} no DB:`, err));
     } catch (e) {
-      console.warn('erro no disconnected handler:', e && e.message ? e.message : e);
+      console.error(`[client.on('disconnected')] Erro no handler para device ${deviceId}:`, e);
     }
   });
 
@@ -509,6 +542,7 @@ function initializeWhatsAppClient(deviceId, userId) {
       const deviceObj = clients[deviceId];
       if (!deviceObj || !deviceObj.isClientReady) return;
       const userId = deviceObj.userId;
+      const empresaId = deviceObj.empresa_id; // Adicionado
       const chatId = message.from || (message.to && message.to.includes('@c.us') ? message.to : null);
       if (!chatId) return;
 
@@ -532,6 +566,7 @@ function initializeWhatsAppClient(deviceId, userId) {
           chatId,
           deviceId,
           userId,
+          empresa_id: empresaId, // Adicionado
           body: message.body || null,
           fromMe: !!message.fromMe,
           type: message.type || (data ? 'media' : 'chat'),
@@ -551,6 +586,7 @@ function initializeWhatsAppClient(deviceId, userId) {
             chatId,
             deviceId,
             userId,
+            empresa_id: empresaId, // Adicionado
             filename: filename || getDefaultFilename(mimetype),
             mimetype: mimetype || null,
             size: data ? Buffer.from(data, 'base64').length : null,
@@ -561,7 +597,7 @@ function initializeWhatsAppClient(deviceId, userId) {
       }
 
       // Remove tabulação se necessário
-      await removerTabulacaoSeExistir(userId, chatId);
+      await removerTabulacaoSeExistir(userId, chatId, empresaId);
 
       // Broadcast para o frontend via WebSocket
       if (userId) {
@@ -584,7 +620,7 @@ function initializeWhatsAppClient(deviceId, userId) {
         }, userId);
       }
     } catch (err) {
-      console.error('Erro ao processar mensagem recebida:', err);
+      console.error(`[client.on('message')] Erro ao processar mensagem recebida para device ${deviceId}:`, err);
     }
   });
 
@@ -645,7 +681,7 @@ async function getChatMessages(chatId, limit = 30, deviceId) {
                 messageData.data = media.data;
               }
             } catch (error) {
-              console.error('Erro ao baixar mídia do histórico (fetch):', error);
+              console.error(`[getChatMessages] Erro ao baixar mídia do histórico (fetch) para msg ${m.id._serialized}:`, error);
             }
           } else {
             messageData.type = 'chat';
@@ -657,13 +693,13 @@ async function getChatMessages(chatId, limit = 30, deviceId) {
         processed.sort((a, b) => a.timestamp - b.timestamp);
         return processed.slice(-limit);
       } catch (err) {
-        console.error('Erro ao buscar mensagens diretamente do client:', err);
+        console.error(`[getChatMessages] Erro ao buscar mensagens do client para chat ${chatId}:`, err);
       }
     }
 
     return [];
   } catch (error) {
-    console.error('Erro ao buscar mensagens:', error);
+    console.error(`[getChatMessages] Erro geral ao buscar mensagens para chat ${chatId}:`, error);
     return [];
   }
 }
@@ -672,7 +708,7 @@ async function getChatMessages(chatId, limit = 30, deviceId) {
 async function sendMediaMessage(chatId, media, deviceId, options = {}, maxRetries = 3) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      console.log(`Tentativa ${attempt} de envio de mídia...`);
+      console.log(`[sendMediaMessage] Tentativa ${attempt} de envio de mídia para ${chatId} via device ${deviceId}`);
 
       if (!clients[deviceId] || !clients[deviceId].isClientReady) {
         throw new Error(`Cliente ${deviceId} não está conectado`);
@@ -688,6 +724,7 @@ async function sendMediaMessage(chatId, media, deviceId, options = {}, maxRetrie
       // e também no WhatsappMedia para indexação por usuário/device
       try {
         const userId = clients[deviceId] ? clients[deviceId].userId : null;
+        const empresaId = clients[deviceId] ? clients[deviceId].empresa_id : null; // Adicionado
         const idSerialized = result.id && result.id._serialized ? result.id._serialized : `${chatId}_${Date.now()}_out`;
 
         const exists = await WhatsappMessage.findByPk(idSerialized);
@@ -697,6 +734,7 @@ async function sendMediaMessage(chatId, media, deviceId, options = {}, maxRetrie
             chatId: message.chatId,
             deviceId,
             userId: clients[deviceId].userId,
+            empresa_id: empresaId, // Adicionado
             body: `[Mídia enviada] ${media.filename || 'arquivo_enviado'}`,
             fromMe: true,
             type: 'media',
@@ -715,6 +753,7 @@ async function sendMediaMessage(chatId, media, deviceId, options = {}, maxRetrie
             chatId,
             deviceId,
             userId,
+            empresa_id: empresaId, // Adicionado
             filename: media.filename || getDefaultFilename(media.mimetype),
             mimetype: media.mimetype || null,
             size: media.data ? Buffer.from(media.data, 'base64').length : null,
@@ -723,7 +762,7 @@ async function sendMediaMessage(chatId, media, deviceId, options = {}, maxRetrie
           });
         }
       } catch (dbErr) {
-        console.error('Erro ao salvar mídia enviada no DB:', dbErr);
+        console.error(`[sendMediaMessage] Erro ao salvar mídia enviada no DB para chat ${chatId}:`, dbErr);
       }
 
       const mediaData = {
@@ -755,13 +794,13 @@ async function sendMediaMessage(chatId, media, deviceId, options = {}, maxRetrie
       return result;
 
     } catch (error) {
-      console.error(`Erro na tentativa ${attempt}:`, error.message);
+      console.error(`[sendMediaMessage] Erro na tentativa ${attempt} para ${chatId}:`, error.message);
 
       const isVideo = media?.mimetype?.startsWith('video/');
       const alreadyAsDocument = options && options.sendMediaAsDocument === true;
 
       if (isVideo && !alreadyAsDocument) {
-        console.warn('Falha ao enviar como mídia. Tentando enviar como documento...');
+        console.warn(`[sendMediaMessage] Falha ao enviar vídeo como mídia para ${chatId}. Tentando como documento...`);
         options = { ...(options || {}), sendMediaAsDocument: true };
         continue;
       }
@@ -773,9 +812,9 @@ async function sendMediaMessage(chatId, media, deviceId, options = {}, maxRetrie
 }
 
 // Função para remover tabulação ao receber ou enviar mensagem
-async function removerTabulacaoSeExistir(userId, chatId) {
+async function removerTabulacaoSeExistir(userId, chatId, empresaId) {
   if (!userId || !chatId) return;
-  await Tabulacao.destroy({ where: { user_id: userId, chatId } });
+  await Tabulacao.destroy({ where: { user_id: userId, chatId, empresa_id: empresaId } });
   chatsTabulados.delete(chatId);
 
   // Notifica o front para reexibir no atendimento
@@ -807,6 +846,7 @@ function handleUpgrade(request, socket, head, wss) {
 
     // Anexa userId do socket via sessão
     ws.userId = getUserIdFromRequest(request) || null;
+    ws.empresaId = getEmpresaIdFromRequest(request) || null; // Adicionado
 
     if (request.url && request.url.includes('atendimento')) {
       ws.isAtendimento = true;
@@ -829,10 +869,11 @@ function handleUpgrade(request, socket, head, wss) {
         let deviceId = message.deviceId;
 
         const userId = ws.userId;
+        const empresaId = ws.empresaId; // Adicionado
 
         switch (message.type) {
           case 'connect': {
-            if (!userId) {
+            if (!userId) { // Verificação já presente, mas mantida por segurança
               ws.send(JSON.stringify({ type: 'error', status: 'Usuário não autenticado.' }));
               break;
             }
@@ -842,11 +883,11 @@ function handleUpgrade(request, socket, head, wss) {
             }
             // Impede reutilizar um deviceId de outro usuário
             if (clients[deviceId] && clients[deviceId].userId !== userId) {
-              ws.send(JSON.stringify({ type: 'error', status: 'Este device pertence a outro usuário.' }));
+              ws.send(JSON.stringify({ type: 'error', message: 'Este device pertence a outro usuário.' }));
               break;
             }
             if (!clients[deviceId]) {
-              initializeWhatsAppClient(deviceId, userId);
+              initializeWhatsAppClient(deviceId, userId, empresaId);
             }
             ws.send(JSON.stringify({ type: 'connect', deviceId }));
             break;
@@ -863,12 +904,12 @@ function handleUpgrade(request, socket, head, wss) {
 
           case 'disconnect': {
             if (!deviceId) {
-              ws.send(JSON.stringify({ type: 'error', status: 'deviceId obrigatório para desconectar.' }));
+              ws.send(JSON.stringify({ type: 'error', message: 'deviceId obrigatório para desconectar.' }));
               break;
             }
             // Autoriza apenas se o device é do usuário
             if (!clients[deviceId] || clients[deviceId].userId !== userId) {
-              ws.send(JSON.stringify({ type: 'error', status: 'Sem permissão para desconectar este device.' }));
+              ws.send(JSON.stringify({ type: 'error', message: 'Sem permissão para desconectar este device.' }));
               break;
             }
             if (clients[deviceId].client) {
@@ -876,7 +917,7 @@ function handleUpgrade(request, socket, head, wss) {
               clients[deviceId].client = null;
               clients[deviceId].isClientReady = false;
               delete allDeviceContacts[deviceId];
-              broadcastToUser(userId, { type: 'disconnected', status: 'WhatsApp desconectado', deviceId });
+              broadcastToUser(userId, { type: 'disconnected', message: 'WhatsApp desconectado', deviceId });
               await WhatsappDevice.update(
                 { status: 'disconnected' },
                 { where: { device_id: deviceId } }
@@ -892,7 +933,7 @@ function handleUpgrade(request, socket, head, wss) {
             ws.send(JSON.stringify({
               type: 'status',
               isReady: allowed ? clientObj.isClientReady : false,
-              status: allowed && clientObj.isClientReady ? 'Conectado' : 'Desconectado',
+              message: allowed && clientObj.isClientReady ? 'Conectado' : 'Desconectado',
               deviceId
             }));
             if (allowed && clientObj.isClientReady) {
@@ -936,7 +977,7 @@ function handleUpgrade(request, socket, head, wss) {
 
               ws.send(JSON.stringify({ type: 'messages', chatId: message.chatId, messages: payload, deviceId }));
             } catch (err) {
-              console.error('Erro ao processar get-messages:', err);
+              console.error(`[ws.onmessage] Erro ao processar get-messages para chat ${message.chatId}:`, err);
               ws.send(JSON.stringify({ type: 'messages', chatId: message.chatId, messages: [], deviceId }));
             }
             break;
@@ -951,7 +992,7 @@ function handleUpgrade(request, socket, head, wss) {
             if (!deviceId || !clients[deviceId] || clients[deviceId].userId !== userId) {
               ws.send(JSON.stringify({
                 type: 'error',
-                status: 'WhatsApp não conectado ou device não pertence ao usuário.',
+                message: 'WhatsApp não conectado ou device não pertence ao usuário.',
                 availableDevices: getUserDeviceIds(userId)
               }));
               break;
@@ -974,6 +1015,7 @@ function handleUpgrade(request, socket, head, wss) {
                     chatId: message.chatId,
                     deviceId,
                     userId: clients[deviceId].userId,
+                    empresa_id: clients[deviceId].empresa_id, // Adicionado
                     body: message.body,
                     fromMe: true,
                     type: sentMessage.type || 'chat',
@@ -984,12 +1026,12 @@ function handleUpgrade(request, socket, head, wss) {
                   });
                 }
               } catch (dbErr) {
-                console.error('Erro ao salvar mensagem enviada no DB:', dbErr);
+                console.error(`[ws.send-message] Erro ao salvar mensagem enviada no DB para chat ${message.chatId}:`, dbErr);
               }
 
               // Se estava tabulado, remove ao disparar mensagem
-              if (userId && chatsTabulados.has(message.chatId)) {
-                await removerTabulacaoSeExistir(userId, message.chatId);
+              if (userId && empresaId && chatsTabulados.has(message.chatId)) {
+                await removerTabulacaoSeExistir(userId, message.chatId, empresaId);
               }
 
               ws.send(JSON.stringify({
@@ -1019,10 +1061,10 @@ function handleUpgrade(request, socket, head, wss) {
               });
 
             } catch (err) {
-              console.error('Erro ao enviar mensagem:', err);
+              console.error(`[ws.send-message] Erro ao enviar mensagem para ${message.chatId}:`, err);
               ws.send(JSON.stringify({
                 type: 'error',
-                status: `Erro ao enviar mensagem: ${err.message}`,
+                message: `Erro ao enviar mensagem: ${err.message}`,
                 chatId: message.chatId,
                 deviceId
               }));
@@ -1038,7 +1080,7 @@ function handleUpgrade(request, socket, head, wss) {
             if (!deviceId || !clients[deviceId] || clients[deviceId].userId !== userId) {
               ws.send(JSON.stringify({
                 type: 'error',
-                status: 'WhatsApp não conectado ou device não pertence ao usuário.',
+                message: 'WhatsApp não conectado ou device não pertence ao usuário.',
                 availableDevices: getUserDeviceIds(userId)
               }));
               break;
@@ -1080,8 +1122,8 @@ function handleUpgrade(request, socket, head, wss) {
               }));
 
               // Se estava tabulado, remove ao disparar áudio
-              if (userId && chatsTabulados.has(message.chatId)) {
-                await removerTabulacaoSeExistir(userId, message.chatId);
+              if (userId && empresaId && chatsTabulados.has(message.chatId)) {
+                await removerTabulacaoSeExistir(userId, message.chatId, empresaId);
               }
 
               // Broadcast para outros atendentes do mesmo usuário
@@ -1106,10 +1148,10 @@ function handleUpgrade(request, socket, head, wss) {
               });
 
             } catch (err) {
-              console.error('Erro ao enviar áudio:', err);
+              console.error(`[ws.send-audio] Erro ao enviar áudio para ${message.chatId}:`, err);
               ws.send(JSON.stringify({
                 type: 'error',
-                status: `Erro ao enviar áudio: ${err.message}`,
+                message: `Erro ao enviar áudio: ${err.message}`,
                 chatId: message.chatId,
                 deviceId
               }));
@@ -1125,7 +1167,7 @@ function handleUpgrade(request, socket, head, wss) {
             if (!deviceId || !clients[deviceId] || clients[deviceId].userId !== userId) {
               ws.send(JSON.stringify({
                 type: 'error',
-                status: 'WhatsApp não conectado ou device não pertence ao usuário.',
+                message: 'WhatsApp não conectado ou device não pertence ao usuário.',
                 availableDevices: getUserDeviceIds(userId)
               }));
               break;
@@ -1217,7 +1259,7 @@ function handleUpgrade(request, socket, head, wss) {
                   tempId: message.tempId || null
                 }));
               } catch (dbErr) {
-                console.error('Erro ao recuperar/salvar payload pós-envio:', dbErr);
+                console.error(`[ws.send-media] Erro ao recuperar/salvar payload pós-envio para ${message.chatId}:`, dbErr);
                 // enviar resposta simples se falhar
                 ws.send(JSON.stringify({
                   type: 'media-sent',
@@ -1229,7 +1271,7 @@ function handleUpgrade(request, socket, head, wss) {
                 }));
               }
             } catch (err) {
-              console.error('Erro ao enviar mídia:', err);
+              console.error(`[ws.send-media] Erro ao enviar mídia para ${message.chatId}:`, err);
 
               const friendly =
                 (String(err.message || err).includes('Evaluation failed') ?
@@ -1238,7 +1280,7 @@ function handleUpgrade(request, socket, head, wss) {
 
               ws.send(JSON.stringify({
                 type: 'error',
-                status: `Erro ao enviar mídia: ${friendly}`,
+                message: `Erro ao enviar mídia: ${friendly}`,
                 chatId: message.chatId,
                 deviceId
               }));
@@ -1258,7 +1300,7 @@ function handleUpgrade(request, socket, head, wss) {
                 await chat.sendStateTyping();
               }
             } catch (err) {
-              console.error(`Erro ao definir status 'digitando' para ${message.chatId}:`, err.message);
+              console.error(`[ws.typing-start] Erro ao definir status 'digitando' para ${message.chatId}:`, err.message);
             }
             break;
           }
@@ -1276,7 +1318,7 @@ function handleUpgrade(request, socket, head, wss) {
                 await chat.clearState();
               }
             } catch (err) {
-              console.error(`Erro ao limpar status para ${message.chatId}:`, err.message);
+              console.error(`[ws.typing-stop] Erro ao limpar status para ${message.chatId}:`, err.message);
             }
             break;
           }
@@ -1293,7 +1335,7 @@ function handleUpgrade(request, socket, head, wss) {
                 await chat.sendStateRecording();
               }
             } catch (err) {
-              console.error(`Erro ao definir status 'gravando' para ${message.chatId}:`, err.message);
+              console.error(`[ws.recording-start] Erro ao definir status 'gravando' para ${message.chatId}:`, err.message);
             }
             break;
           }
@@ -1312,11 +1354,11 @@ function handleUpgrade(request, socket, head, wss) {
           }
 
           default:
-            ws.send(JSON.stringify({ type: 'error', status: 'Tipo de mensagem não reconhecido' }));
+            ws.send(JSON.stringify({ type: 'error', message: 'Tipo de mensagem não reconhecido' }));
         }
       } catch (error) {
-        console.error('Erro no WebSocket:', error);
-        ws.send(JSON.stringify({ type: 'error', status: 'Erro interno do servidor', deviceId: null }));
+        console.error('[ws.onmessage] Erro fatal no manipulador de WebSocket:', error);
+        ws.send(JSON.stringify({ type: 'error', message: 'Erro interno do servidor ao processar sua solicitação.', deviceId: null }));
       }
     });
 
@@ -1393,7 +1435,7 @@ async function fetchAndSaveMessagesIfNeeded(deviceId, chatId, userId, minMessage
                             filename = media.filename || null;
                         }
                     } catch (e) {
-                        console.error('Erro ao baixar mídia para mensagem', idSerialized, e);
+                        console.error(`[fetchAndSave] Erro ao baixar mídia para mensagem ${idSerialized}:`, e);
                     }
                 }
 
@@ -1411,7 +1453,7 @@ async function fetchAndSaveMessagesIfNeeded(deviceId, chatId, userId, minMessage
                     timestamp: normalizeTimestampBackend(m.timestamp || Date.now())
                 });
             } catch (e) {
-                console.error('Erro ao salvar mensagem inicial:', e);
+                if (e.name !== 'SequelizeUniqueConstraintError') console.error(`[fetchAndSave] Erro ao salvar mensagem inicial ${idSerialized}:`, e);
             }
         }
 
@@ -1423,7 +1465,7 @@ async function fetchAndSaveMessagesIfNeeded(deviceId, chatId, userId, minMessage
         return dbMessages.map(m => m.toJSON());
 
     } catch (err) {
-        console.error('Erro ao buscar mensagens do WhatsApp:', err);
+        console.error(`[fetchAndSave] Erro ao buscar mensagens do WhatsApp para chat ${chatId}:`, err);
         const dbMessages = await WhatsappMessage.findAll({
             where: { deviceId, chatId },
             order: [['timestamp', 'ASC']]
@@ -1497,7 +1539,7 @@ router.get('/all-status', async (req, res) => {
 
     return res.json({ success: true, devices });
   } catch (err) {
-    console.error('GET /whatsapp/all-status erro:', err && err.message ? err.message : err);
+    console.error('[GET /whatsapp/all-status] Erro ao buscar status dos devices:', err);
     return res.json({ success: false, devices: [] });
   }
 });
@@ -1525,8 +1567,10 @@ router.delete('/remove-device', async (req, res) => {
       delete clients[deviceId];
     }
     delete allDeviceContacts[deviceId];
+    res.json({ success: true, message: 'Device removido com sucesso.' });
   } catch (error) {
-    res.json({ success: false, message: error.message });
+    console.error(`[DELETE /remove-device] Erro ao remover device ${deviceId}:`, error);
+    res.status(500).json({ success: false, message: 'Erro interno ao remover o dispositivo.' });
   }
 });
 
@@ -1581,7 +1625,7 @@ router.post('/get-audio', async (req, res) => {
               }
             }
           } catch (error) {
-            console.error(`Erro ao buscar áudio do device ${deviceId}:`, error);
+            console.error(`[POST /get-audio] Erro ao buscar áudio do device ${deviceId}:`, error);
           }
         }
       }
@@ -1592,8 +1636,8 @@ router.post('/get-audio', async (req, res) => {
     }
 
   } catch (error) {
-    console.error('Erro ao buscar áudio:', error);
-    res.json({ success: false, error: error.message });
+    console.error('[POST /get-audio] Erro ao buscar áudio:', error);
+    res.status(500).json({ success: false, error: 'Erro interno ao processar a solicitação de áudio.' });
   }
 });
 
@@ -1634,8 +1678,8 @@ router.get('/tabulacoes', async (req, res) => {
 
     res.json({ success: true, tabulacoes: grouped });
   } catch (e) {
-    console.error('Erro ao listar tabulações:', e);
-    res.status(500).json({ success: false, message: 'Erro ao listar tabulações' });
+    console.error('[GET /tabulacoes] Erro ao listar tabulações:', e);
+    res.status(500).json({ success: false, message: 'Erro interno ao listar tabulações.' });
   }
 });
 
@@ -1664,8 +1708,8 @@ router.get('/media', async (req, res) => {
 
     res.json({ success: true, data: mediaRow.data, mimetype: mediaRow.mimetype, filename: mediaRow.filename });
   } catch (err) {
-    console.error('Erro /whatsapp/media:', err);
-    res.status(500).json({ success: false, error: err.message || 'Erro interno' });
+    console.error('[GET /media] Erro ao buscar mídia:', err);
+    res.status(500).json({ success: false, error: 'Erro interno ao buscar a mídia.' });
   }
 });
 
@@ -1687,6 +1731,7 @@ router.setLastMassSend = (deviceId, when) => {
 // POST /whatsapp/tabular
 router.post('/tabular', async (req, res) => {
   try {
+    const empresaId = getHttpEffectiveEmpresaId(req); // Adicionado
     const userId = getHttpEffectiveUserId(req);
     if (!userId) return res.status(401).json({ success: false, message: 'Não autenticado' });
 
@@ -1697,6 +1742,7 @@ router.post('/tabular', async (req, res) => {
     }
 
     await Tabulacao.create({
+      empresa_id: empresaId, // Adicionado
       user_id: userId, chatId, tabulacao,
       detalhes: detalhes || null,
       observacoes: observacoes || null,
@@ -1717,14 +1763,15 @@ router.post('/tabular', async (req, res) => {
 
     res.json({ success: true });
   } catch (e) {
-    console.error('Erro ao tabular:', e);
-    res.status(500).json({ success: false, message: 'Erro ao tabular conversa' });
+    console.error(`[POST /tabular] Erro ao tabular chat ${chatId}:`, e);
+    res.status(500).json({ success: false, message: 'Erro interno ao tabular a conversa.' });
   }
 });
 
 // Novo: POST /whatsapp/tabular/retornar -> volta chat ao atendimento
 router.post('/tabular/retornar', async (req, res) => {
   try {
+    const empresaId = getHttpEffectiveEmpresaId(req); // Adicionado
     const userId = getHttpEffectiveUserId(req);
     if (!userId) return res.status(401).json({ success: false, message: 'Não autenticado' });
 
@@ -1732,7 +1779,7 @@ router.post('/tabular/retornar', async (req, res) => {
     if (!chatId) return res.status(400).json({ success: false, message: 'chatId é obrigatório' });
 
     // Remove todos os registros deste chat para o usuário (ou adapte para apenas o último)
-    await Tabulacao.destroy({ where: { user_id: userId, chatId } });
+    await Tabulacao.destroy({ where: { user_id: userId, chatId, empresa_id: empresaId } });
 
     // Desmarcar para voltar a aparecer
     chatsTabulados.delete(chatId);
@@ -1764,8 +1811,8 @@ router.post('/tabular/retornar', async (req, res) => {
 
     res.json({ success: true });
   } catch (e) {
-    console.error('Erro ao retornar chat ao atendimento:', e);
-    res.status(500).json({ success: false, message: 'Erro ao retornar chat ao atendimento' });
+    console.error(`[POST /tabular/retornar] Erro ao retornar chat ${chatId}:`, e);
+    res.status(500).json({ success: false, message: 'Erro interno ao retornar chat para o atendimento.' });
   }
 });
 
@@ -1789,6 +1836,7 @@ async function initClientForDevice(deviceId) {
   // await safeRm(authDir);
 
   const client = new Client({
+    // ... (configurações do client)
     authStrategy: new LocalAuth({ clientId: String(deviceId) /* nome único por device */ }),
     puppeteer: { headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] }
   });
@@ -1799,7 +1847,7 @@ async function initClientForDevice(deviceId) {
       await client.destroy();
       await safeRm(authDir);
     } catch (e) {
-      console.warn('Falha ao remover sessão após disconnect:', e && e.code);
+      console.warn(`[initClientForDevice] Falha ao remover sessão ${deviceId} após disconnect:`, e.code || e.message);
     }
   });
 
@@ -1816,7 +1864,7 @@ async function initClientForDevice(deviceId) {
     try {
       await safeRm(authDir);
     } catch (err) {
-      console.warn('resetSession: falha ao remover sessão:', err && err.code ? err.code : err);
+      console.warn(`[resetSession] Falha ao remover sessão ${deviceId}:`, err.code || err.message);
       throw err;
     }
   }
@@ -1841,7 +1889,7 @@ router.get('/qrcode/:deviceId', async (req, res) => {
       // tenta inicializar com o userId associado (se houver)
       const userRow = await WhatsappDevice.findOne({ where: { device_id: deviceId } }).catch(()=>null);
       const userId = userRow ? userRow.user_id : null;
-      initializeWhatsAppClient(deviceId, userId);
+      initializeWhatsAppClient(deviceId, userId, userRow ? userRow.empresa_id : null); // Passa empresa_id
     }
 
     const start = Date.now();
@@ -1870,8 +1918,8 @@ router.get('/qrcode/:deviceId', async (req, res) => {
     }
     return res.json({ success: false, qr: null, isReady: !!(final && final.isClientReady) });
   } catch (err) {
-    console.error('Erro /whatsapp/qrcode:', err && err.message ? err.message : err);
-    return res.json({ success: false, qr: null, error: err && err.message ? err.message : 'erro' });
+    console.error(`[GET /qrcode/${deviceId}] Erro:`, err);
+    return res.status(500).json({ success: false, qr: null, error: 'Erro interno ao obter QR Code.' });
   }
 });
  
@@ -1887,12 +1935,12 @@ router.post('/start/:deviceId', async (req, res) => {
     const userId = userRow ? userRow.user_id : (clients[deviceId] ? clients[deviceId].userId : null);
 
     // chama inicialização — função já existente; se já estiver inicializando/ready, ela é idempotente
-    initializeWhatsAppClient(deviceId, userId);
+    initializeWhatsAppClient(deviceId, userId, userRow ? userRow.empresa_id : null);
 
     return res.json({ success: true, started: true, deviceId });
   } catch (err) {
-    console.error('POST /whatsapp/start erro:', err && err.message ? err.message : err);
-    return res.status(500).json({ success: false, error: err && err.message ? err.message : 'erro' });
+    console.error(`[POST /start/${deviceId}] Erro:`, err);
+    return res.status(500).json({ success: false, error: 'Erro interno ao iniciar o dispositivo.' });
   }
 });
 
@@ -1900,6 +1948,7 @@ router.post('/start/:deviceId', async (req, res) => {
 router.post('/new-device', async (req, res) => {
   try {
     const userId = req.session && req.session.usuario ? req.session.usuario.id : null;
+    const empresaId = req.session && req.session.usuario ? req.session.usuario.empresa_id : null; // Adicionado
     const deviceId = Date.now().toString() + Math.floor(Math.random() * 10000);
     // tenta criar registro no BD (não falha se já existir)
 
@@ -1907,6 +1956,7 @@ router.post('/new-device', async (req, res) => {
       await WhatsappDevice.create({
         device_id: deviceId,
         status: 'connecting',
+        empresa_id: empresaId, // Adicionado
         last_connected: new Date(),
         created_at: new Date(),
         user_id: userId
@@ -1915,11 +1965,11 @@ router.post('/new-device', async (req, res) => {
       // ignora erros de criação (por exemplo se tabela tiver trigger/constraints)
     }
     // inicializa client de forma idempotente
-    initializeWhatsAppClient(deviceId, userId);
+    initializeWhatsAppClient(deviceId, userId, empresaId); // Passa empresaId
     return res.json({ success: true, deviceId });
   } catch (err) {
-    console.error('POST /whatsapp/new-device erro:', err && err.message ? err.message : err);
-    return res.status(500).json({ success: false, error: err && err.message ? err.message : 'erro' });
+    console.error('[POST /new-device] Erro ao criar novo dispositivo:', err);
+    return res.status(500).json({ success: false, error: 'Erro interno ao criar novo dispositivo.' });
   }
 });
 
@@ -1979,7 +2029,7 @@ async function extractNumberFromAuthDir(deviceId) {
           if (m) phoneCandidates.push(m[1]);
           const mm = raw.match(/(\d{6,15})/g);
           if (mm && mm.length) phoneCandidates.push(...mm);
-               }
+        }
       } catch (e) { /* ignore read/parse errors */ }
     }
   

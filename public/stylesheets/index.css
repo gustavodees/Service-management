@@ -1,0 +1,121 @@
+body {
+  margin: 0;
+  padding: 0;
+  font-family: Arial, sans-serif;
+}
+
+/* Tela de Login com fundo escuro */
+/* =======================
+   Layout: imagem à esquerda,
+   formulário de login à direita
+   ======================= */
+.login-container {
+  background-color: #121922;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100vh;
+  gap: 40px;
+
+  box-sizing: border-box;
+}
+
+/* área esquerda (imagem grande) */
+.login-left {
+  flex: 1 1 75%;
+  display: flex;
+  max-width: calc(100% - 430px);
+}
+
+/* garante que a imagem preencha bem a área sem estourar */
+.login-left img.login-hero {
+  width: 100%;
+  max-width: none;
+  height: calc(120vh - 80px);
+  max-height: 100vh;
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgb(255, 217, 0);
+}
+
+/* área direita (formulário) */
+.login-right {
+  flex: 0 0 420px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 5%;
+}
+
+/* caixa do formulário ajustada para 100% do painel direito */
+.login-box {
+  border-radius: 10px;
+  background-color: #000000b2;
+  border: 2px solid #fceb00;
+  padding: 30px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+  
+}
+
+.logo {
+  margin-bottom: 10px;
+}
+
+.logo img {
+  width: 100px;
+  height: auto;
+}
+
+.form-groupe {
+  margin-bottom: 15px;
+  text-align: left;
+}
+
+.form-groupe label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: bold;
+  color: #ffffff4f;
+
+}
+
+.form-groupe input {
+  width: 100%;
+  height: 40px;
+  padding: 8px;
+  box-sizing: border-box;
+  border: 1px solid #ffffff;
+  border-radius: 10px;
+  font-size: 16px;
+}
+
+.btn-entrar {
+  background-color: #00d800;
+  color: #000;
+  border: none;
+  padding: 6px 30px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  width: 50%;
+  border-radius: 10px;
+  text-transform: uppercase;
+  margin-top: 3%;
+  transition: background-color 0.3s;
+}
+
+.btn-entrar:hover {
+  background-color: #00bb00;
+}
+
+.error-message {
+  color: #ff0000;
+  padding: 10px;
+  margin-bottom: 15px;
+  border-radius: 3px;
+  text-align: center;
+
+}
+

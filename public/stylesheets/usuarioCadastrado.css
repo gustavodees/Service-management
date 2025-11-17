@@ -1,0 +1,415 @@
+.usuario {
+    margin-left: 3%;
+    margin-right: 1%;
+}
+
+.usuario i {
+    font-size: 2.0rem;
+    margin-right: 10px;
+}
+
+.usuarios-lista {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    overflow: hidden;
+    margin-top: 2rem;
+}
+
+.usuarios-header {
+    background: #128C7E;
+    color: white;
+    padding: 1rem;
+    display: grid;
+    grid-template-columns: 2fr 2fr 2fr; /* 3 colunas iguais para melhor alinhamento */
+    gap: 1rem;
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+
+/* Garantir que todas as colunas do cabeçalho sejam brancas */
+.usuarios-header .nome-column,
+.usuarios-header .data-column,
+.usuarios-header .acoes-column {
+    color: white;
+}
+
+/* Centralizar o texto "Ações" no cabeçalho */
+.usuarios-header .acoes-column {
+    display: flex;
+    justify-content: center; /* Centraliza o texto "Ações" */
+    align-items: center;
+    color: white;
+}
+
+/* Centralizar também o texto "Data de Cadastro" */
+.usuarios-header .data-column {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: white;
+}
+
+/* Alinhar "Nome" à esquerda */
+.usuarios-header .nome-column {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    color: white;
+}
+
+.usuario-item {
+    padding: 1rem;
+    display: grid;
+    grid-template-columns: 2fr 2fr 2fr; /* 3 colunas iguais para melhor alinhamento */
+    gap: 1rem;
+    border-bottom: 1px solid #eee;
+    transition: background-color 0.3s ease;
+    align-items: center;
+}
+
+.usuario-item:hover {
+    background-color: #f8f9fa;
+}
+
+.usuario-item:last-child {
+    border-bottom: none;
+}
+
+.nome-column {
+    font-weight: 500;
+    color: #333;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.nome-usuario {
+    font-weight: 500;
+    color: #333;
+}
+
+.tipo-usuario {
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0.2rem 0.5rem;
+    border-radius: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.tipo-usuario.admin {
+    background-color: #28a745;
+    color: white;
+}
+
+.tipo-usuario.funcionario {
+    background-color: #ff7504;
+    color: white;
+}
+
+.data-column {
+    color: #666;
+    font-size: 0.9rem;
+    text-align: center; /* Centralizar data nos itens */
+}
+
+/* Manter os botões alinhados à direita nos itens */
+.usuario-item .acoes-column {
+    display: flex;
+    justify-content: center; /* centraliza os botões */
+    align-items: center;
+}
+
+/* container dos botões: centralizar por padrão e permitir quebra */
+.botoes-acoes {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: center; /* centraliza os botões */
+    align-items: center;
+}
+
+/* Estilos base para todos os botões */
+.botoes-acoes button {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    min-width: 90px;
+    justify-content: center;
+}
+
+.botoes-acoes button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.botoes-acoes button:active {
+    transform: translateY(0);
+}
+
+/* Botão Tabulação - Azul */
+.btn-tabulacao {
+    background-color: #007bff;
+    color: white;
+}
+
+.btn-tabulacao:hover {
+    background-color: #0056b3;
+}
+
+.btn-tabulacao:active {
+    background-color: #004085;
+}
+
+/* Garantir ícone branco no botão Tabulação */
+.btn-tabulacao,
+.btn-tabulacao span {
+  color: #ffffff !important;
+}
+
+.btn-tabulacao .icon,
+.btn-tabulacao i {
+  color: #ffffff !important;
+  /* ajustar tamanho/alinhamento se precisar */
+  vertical-align: middle;
+}
+
+/* Botão Atendimento - Verde */
+.btn-atendimento {
+    background-color: #28a745;
+    color: white;
+}
+
+.btn-atendimento:hover {
+    background-color: #1e7e34;
+}
+
+.btn-atendimento:active {
+    background-color: #155724;
+}
+
+/* Botão Deletar - Vermelho */
+.btn-deletar {
+    background-color: #dc3545;
+    color: white;
+}
+
+.btn-deletar:hover {
+    background-color: #c82333;
+}
+
+.btn-deletar:active {
+    background-color: #bd2130;
+}
+
+/* Botão Deletar - Estados */
+.btn-deletar:disabled {
+    background-color: #6c757d;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.btn-deletar:disabled:hover {
+    background-color: #6c757d;
+    transform: none;
+    box-shadow: none;
+}
+
+/* Ícones dos botões */
+.botoes-acoes button i {
+    font-size: 0.9rem;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 3rem;
+    color: #666;
+    margin-top: 2rem;
+}
+
+.empty-state p {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 500;
+}
+
+.empty-state small {
+    display: block;
+    margin-top: 0.5rem;
+    opacity: 0.7;
+}
+
+.alert {
+    margin: 1rem 0;
+    padding: 1rem;
+    border-radius: 5px;
+    border: 1px solid transparent;
+}
+
+.alert-danger {
+    background-color: #f8d7da;
+    border-color: #f5c6cb;
+    color: #721c24;
+}
+
+.alert-success {
+    background-color: #d4edda;
+    border-color: #c3e6cb;
+    color: #155724;
+}
+
+/* Animação de loading */
+.fa-spinner {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* estilos da barra de pesquisa */
+.usuarios-search {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #eee;
+    background: #fafafa;
+}
+.usuarios-search input#usuarioSearch {
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 0.95rem;
+}
+.usuarios-search button.btn-clear {
+    background: #6c757d;
+    color: #fff;
+    border: none;
+    padding: 0.45rem 0.7rem;
+    border-radius: 6px;
+    cursor: pointer;
+}
+.usuarios-search button.btn-clear:hover { filter: brightness(0.95); }
+
+.usuarios-search span#searchCount {
+    font-size: 0.9rem;
+    color: #666;
+    white-space: nowrap;
+    margin-left: 0.5rem;
+}
+
+/* mensagem quando não há resultados da pesquisa */
+.no-results {
+    padding: 1rem;
+    text-align: center;
+    color: #666;
+    font-style: italic;
+    display: none; /* mostrado via JS quando necessário */
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+    .usuarios-header,
+    .usuario-item {
+        grid-template-columns: 1fr; /* Uma coluna em telas pequenas */
+        gap: 0.5rem;
+    }
+    
+    .nome-column {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.25rem;
+    }
+    
+    .data-column {
+        font-size: 0.8rem;
+        margin-top: 0.25rem;
+        text-align: left; /* Alinhar à esquerda no mobile */
+    }
+
+    .usuario-item .acoes-column {
+        justify-content: center; /* centraliza no mobile */
+        margin-top: 0.5rem;
+    }
+
+    .usuarios-header .acoes-column {
+        justify-content: center; /* Manter centralizado no mobile */
+        color: white; /* Garantir cor branca no mobile */
+    }
+
+    /* Garantir que todas as colunas do cabeçalho sejam brancas no mobile */
+    .usuarios-header .nome-column,
+    .usuarios-header .data-column {
+        color: white;
+        justify-content: flex-start; /* Alinhar à esquerda no mobile */
+    }
+
+    .botoes-acoes {
+        width: 100%;
+        justify-content: center; /* centraliza no mobile */
+        flex-wrap: wrap;
+    }
+
+    .botoes-acoes button {
+        min-width: auto;
+        font-size: 0.75rem;
+        padding: 0.4rem 0.6rem;
+        flex: 0 0 auto; /* Não expandir os botões */
+    }
+
+    .botoes-acoes button span {
+        display: none; /* Esconder texto no mobile */
+    }
+
+    .botoes-acoes button i {
+        margin: 0;
+    }
+}
+
+@media (max-width: 480px) {
+    .botoes-acoes {
+        justify-content: center; /* Centralizar apenas em telas muito pequenas */
+        gap: 0.3rem;
+    }
+
+    .botoes-acoes button {
+        min-width: 60px;
+    }
+
+    .botoes-acoes button span {
+        display: none; /* Manter texto escondido */
+    }
+}
+
+/* Botão Gráfico - Laranja para admin */
+.btn-grafico {
+    background: linear-gradient(135deg, #fd7e14 0%, #e55a00 100%);
+    color: #ffffff;
+    border: none;
+    padding: 0.5rem 0.9rem;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 90px;
+}
+
+.btn-grafico:hover {
+    background: linear-gradient(135deg, #e55a00 0%, #c94a00 100%);
+}
+
+.btn-grafico i,
+.btn-grafico .icon {
+    color: #ffffff !important;
+}

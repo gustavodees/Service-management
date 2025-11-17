@@ -1,0 +1,38 @@
+doctype html
+html(lang="pt-BR")
+  head
+    meta(charset="UTF-8")
+    meta(name="viewport", content="width=device-width, initial-scale=1.0")
+    title= title || 'Configurar 2FA'
+    // Reutilizando o mesmo estilo da página de login
+    link(rel="stylesheet", href="/stylesheets/login.css")
+    link(href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap", rel="stylesheet")
+    style.
+      .mfa-instructions { text-align: left; margin-bottom: 20px; line-height: 1.6; }
+      .qr-code-box { margin: 20px 0; }
+      .secret-key { background-color: #f0f0f0; padding: 10px; border-radius: 5px; word-break: break-all; font-family: monospace; }
+
+  body
+    .login-container
+      .login-box
+        header
+          h1.logo Service-management
+          h2 Configurar Autenticação de 2 Fatores
+
+        .mfa-instructions
+          p Para ativar a segurança de dois fatores, siga os passos:
+          ol
+            li Instale um aplicativo autenticador (Google Authenticator, Authy, etc) em seu celular.
+            li Escaneie o QR Code abaixo com o aplicativo.
+            li Se não puder escanear, insira a chave secreta manualmente.
+
+        .qr-code-box
+          img(src=qrCodeUrl, alt="QR Code para configuração de 2FA")
+
+        .form-group
+          label Chave Secreta (para entrada manual)
+          .secret-key= secretKey
+
+        .links
+          // Adicionar um link para o painel de segurança ou dashboard
+          a(href="/admin/dashboard") Voltar para o Painel

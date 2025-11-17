@@ -1,24 +1,34 @@
 const bcrypt = require('bcryptjs');
 const Usuario = require('../routes/Usuario');
 const sequelize = require('../routes/banco');
-
+ 
 async function run() {
     try {
-        await Usuario.sync(); // cria tabela se necessário
+        await sequelize.authenticate();
+        console.log('Conectado ao DB com sucesso.');
+ 
+        await sequelize.sync({ alter: true });
+        console.log('Sync concluído.');
+
         const hashed = await bcrypt.hash('123456789', 10);
-        const user = await Usuario.create({
-            nome: 'Chocolate',
-            email: 'chocolate@local',
-            senha: hashed,
-            tipo: 'admin',
-            wwp_connected: null
+        const [user, created] = await Usuario.findOrCreate({
+            where: { email: 'chocolate@local' },
+            defaults: {
+                nome: 'Chocolate',
+                senha: hashed,
+                tipo: 'admin',
+                empresa_id: null, // Garante que é um admin host
+                wwp_connected: null
+            }
         });
-        console.log('Usuário criado:', user.toJSON());
+
+        if (created) console.log('Usuário criado:', user.toJSON());
+        else console.log('Usuário já existe:', user.toJSON());
     } catch (err) {
-        console.error('Erro:', err);
+        console.error('Erro detalhado:', err && err.stack ? err.stack : err);
     } finally {
-        await sequelize.close();
+        try { await sequelize.close(); } catch (_) {}
     }
 }
-
+ 
 run();

@@ -1,0 +1,97 @@
+extends layout
+
+block head
+  link(rel="stylesheet", href="/stylesheets/dashboard.css")
+  //- Adicionado: Carrega a folha de estilos específica para a página de logs
+  link(rel="stylesheet", href="/stylesheets/logs.css")
+
+block content
+  include header
+  .page-container
+    .page-header
+      div
+        h1.page-title Logs de Atividade do Sistema
+        p.page-subtitle Histórico de ações importantes realizadas no sistema.
+
+    //- Card de Filtros
+    .filter-card
+      h4.mb-3 Filtros
+      form.filter-form(method="GET", action="/admin/logs")
+        //- O filtro de empresa só aparece para o admin HOST
+        if !usuarioEmpresaId
+          .form-group
+            label(for="companyId") Filtrar por Empresa
+            select.form-control(id="companyId", name="companyId")
+              option(value="") Todas as Empresas
+              each company in allCompanies
+                option(value=company.id, selected=(currentFilters.companyId == company.id))= company.nome_fantasia
+        .form-group
+          label(for="userId") Filtrar por Usuário
+          select.form-control(id="userId", name="userId")
+            option(value="") Todos os Usuários
+            each user in allUsers
+              option(value=user.id, selected=(currentFilters.userId == user.id))= user.nome
+        .form-group
+          label(for="action") Filtrar por Ação
+          select.form-control(id="action", name="action")
+            option(value="") Todas as Ações
+            each act in allActions
+              option(value=act, selected=(currentFilters.action === act))= act
+        .form-group
+          label(for="searchTerm") Buscar nos Detalhes
+          input.form-control(type="text", id="searchTerm", name="searchTerm", placeholder="Digite para buscar...", value=currentFilters.searchTerm || '')
+
+        .form-group
+          button.btn.btn-primary(type="submit") Filtrar
+          a.btn.btn-secondary.ml-2(href="/admin/logs") Limpar
+
+    .content-card
+      .table-responsive
+        table.table.table-hover.logs-table
+          thead
+            tr
+              th.col-usuario Usuário
+              th.col-acao Ação
+              th.col-detalhes Detalhes
+              th.col-ip Endereço IP
+              th.col-data Data e Hora
+          tbody
+            if logs && logs.length > 0
+              -
+                function getActionBadgeClass(action) {
+                  if (!action) return 'log-default';
+                  if (action.includes('SUCCESS')) return 'log-success';
+                  if (action.includes('CHANGE') || action.includes('CREATED') || action.includes('DELETED')) return 'log-change';
+                  if (action.includes('LOGIN')) return 'log-info';
+                  return 'log-default';
+                }
+              each log in logs
+                tr
+                  td.col-usuario
+                    if log.Usuario
+                      strong= log.Usuario.nome
+                      br
+                      small.text-muted= log.Usuario.email
+                    else
+                      span.text-muted Usuário Removido
+                  td.col-acao
+                    span(class=`badge-log ${getActionBadgeClass(log.action)}`)= log.action
+                  td.col-detalhes= log.details
+                  td.col-ip= log.ip_address
+                  td.col-data= new Date(log.timestamp).toLocaleString('pt-BR')
+            else
+              tr
+                td(colspan="5", class="text-center") Nenhum log de atividade encontrado.
+      
+      //- Paginação
+      if totalPages > 1
+        nav.mt-4
+          ul.pagination.justify-content-center
+            - let i = 1;
+            while i <= totalPages
+              - const queryParams = { ...currentFilters, page: i };
+              - delete queryParams.page; // Remove a página antiga para não duplicar
+              - const query = new URLSearchParams(queryParams).toString();
+              li.page-item(class=(i === currentPage ? 'active' : ''))
+                a.page-link(href=`/admin/logs?page=${i}&${query}`)= i
+              - i++;

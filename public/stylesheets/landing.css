@@ -1,0 +1,289 @@
+body {
+  font-family: 'Poppins', sans-serif;
+  background-color: #f8f9fa;
+  color: #333;
+  margin: 0;
+  line-height: 1.6;
+}
+
+.container {
+  max-width: 1100px;
+  width: 90%;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+/* --- Header --- */
+.main-header {
+  background-color: #fff;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  padding: 15px 0;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+}
+
+.main-header .container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.logo {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #128C7E;
+  margin: 0;
+}
+
+.btn {
+  display: inline-block;
+  padding: 10px 25px;
+  border-radius: 5px;
+  text-decoration: none;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.btn-login {
+  background-color: transparent;
+  border: 2px solid #128C7E;
+  color: #128C7E;
+}
+
+.btn-login:hover {
+  background-color: #128C7E;
+  color: #fff;
+}
+
+/* --- Hero Section --- */
+.hero {
+  background: linear-gradient(135deg, #e0f7fa 0%, #f5f7fa 100%);
+  text-align: center;
+  padding: 80px 0;
+}
+
+.hero h2 {
+  font-size: 2.8rem;
+  font-weight: 700;
+  color: #2c3e50;
+  margin-bottom: 20px;
+}
+
+.hero p {
+  font-size: 1.1rem;
+  color: #555;
+  max-width: 700px;
+  margin: 0 auto 30px auto;
+}
+
+.btn-primary {
+  background-color: #128C7E;
+  color: #fff;
+  font-size: 1.1rem;
+  padding: 15px 35px;
+}
+
+.btn-primary:hover {
+  background-color: #075E54;
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+}
+
+/* --- Features Section --- */
+.features {
+  padding: 70px 0;
+  background-color: #fff;
+}
+
+.features .container {
+  display: flex;
+  justify-content: space-around;
+  gap: 30px;
+  text-align: center;
+}
+
+.feature-item {
+  max-width: 300px;
+}
+
+.feature-item i {
+  font-size: 2.5rem;
+  color: #128C7E;
+  margin-bottom: 15px;
+}
+
+.feature-item h3 {
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin-bottom: 10px;
+  color: #2c3e50;
+}
+
+/* --- How It Works Section --- */
+.how-it-works {
+  padding: 70px 0;
+  background-color: #fff;
+}
+
+.how-it-works h2 {
+  text-align: center;
+  font-size: 2.2rem;
+  color: #2c3e50;
+  margin-bottom: 50px;
+}
+
+.steps {
+  display: flex;
+  justify-content: space-around;
+  gap: 30px;
+  text-align: center;
+}
+
+.step {
+  max-width: 300px;
+}
+
+.step-number {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background-color: #128C7E;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 15px;
+}
+
+/* --- Detailed Features Section --- */
+.detailed-features {
+  padding: 80px 0;
+}
+
+.detailed-features h2 {
+  text-align: center;
+  font-size: 2.2rem;
+  color: #2c3e50;
+  margin-bottom: 60px;
+}
+
+.feature-card {
+  display: flex;
+  align-items: center;
+  gap: 40px;
+  margin-bottom: 60px;
+}
+
+.feature-card.reverse {
+  flex-direction: row-reverse;
+}
+
+.feature-icon {
+  font-size: 4rem;
+  color: #128C7E;
+  flex-shrink: 0;
+}
+
+.feature-content h3 {
+  font-size: 1.8rem;
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 10px;
+}
+
+.feature-content p {
+  font-size: 1.1rem;
+  color: #555;
+  line-height: 1.7;
+}
+
+/* --- CTA Section --- */
+.cta {
+  background-color: #e0f7fa;
+  text-align: center;
+  padding: 60px 0;
+}
+
+.cta h2 {
+  font-size: 2.2rem;
+  color: #2c3e50;
+  margin-bottom: 15px;
+}
+
+.cta p {
+  font-size: 1.1rem;
+  color: #555;
+  margin-bottom: 30px;
+}
+
+/* --- Footer --- */
+footer {
+  background-color: #2c3e50;
+  color: #ecf0f1;
+  padding: 40px 0 20px 0;
+}
+
+.footer-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 30px;
+  margin-bottom: 30px;
+}
+
+.footer-content h3 {
+  font-size: 1.5rem;
+  color: #fff;
+  margin-bottom: 10px;
+}
+
+.contact-info h4 {
+  font-size: 1.2rem;
+  margin-bottom: 10px;
+}
+
+.footer-bottom {
+  text-align: center;
+  border-top: 1px solid #4a627a;
+  padding-top: 20px;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 768px) {
+  .features .container {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .steps {
+    flex-direction: column;
+    align-items: center;
+  }
+}
+
+@media (max-width: 500px) {
+  .hero h2 {
+    font-size: 2.2rem;
+  }
+  .features .container {
+    flex-direction: column;
+    align-items: center;
+  }
+  .feature-card, .feature-card.reverse {
+    flex-direction: column;
+    text-align: center;
+  }
+  .feature-content h3 {
+    font-size: 1.5rem;
+  }
+  .detailed-features h2, .cta h2 {
+    font-size: 1.8rem;
+  }
+  .footer-content {
+    flex-direction: column;
+    text-align: center;
+  }
+}

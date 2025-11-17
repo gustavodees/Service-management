@@ -1,0 +1,541 @@
+/* ==========================================================================
+   CENTRAL DE ATENDIMENTO - DESIGN MODERNO (3 COLUNAS)
+   ========================================================================== */
+
+/* Reset e Base */
+:root {
+  --border-color: #e0e0e0;
+  --background-light: #f8f9fa;
+  --background-white: #ffffff;
+  --background-chat: #e5ddd5; /* Fundo clássico do WhatsApp */
+  --text-primary: #212529;
+  --text-secondary: #6c757d;
+  --primary-color: #128C7E; /* Verde escuro WhatsApp */
+  --primary-color-dark: #075E54;
+  --secondary-color: #25D366; /* Verde claro WhatsApp */
+  --message-out-bg: #dcf8c6; /* Fundo do balão de mensagem enviada */
+  --danger-color: #dc3545;
+  --info-color: #17a2b8;
+  --warning-color: #ffc107;
+  --font-sans: 'Poppins', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+}
+
+/* Garante que o body não tenha overflow quando a página de atendimento estiver ativa */
+body.atendimento-active {
+  font-family: var(--font-sans);
+  background-color: var(--background-light);
+  color: var(--text-primary);
+  overflow: hidden; /* Evita scroll no body */
+}
+
+/* Container principal que organiza as 3 colunas */
+.atendimento-container {
+  display: flex;
+  height: calc(100vh - 70px); /* Altura total menos o header */
+  width: 100%;
+  box-sizing: border-box;
+  background-color: var(--background-light);
+}
+
+/* --- Coluna 1: Painel de Conversas --- */
+.conversations-panel {
+  width: 360px;
+  min-width: 340px;
+  background-color: var(--background-white);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.conversations-header {
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+#search-conversation {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+}
+#search-conversation:focus {
+  outline: none;
+  border-color: var(--secondary-color);
+  box-shadow: 0 0 0 2px rgba(37, 211, 102, 0.2);
+}
+
+.conversation-tabs {
+  display: flex;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--border-color);
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 0.6rem;
+  border: none;
+  background-color: var(--background-white);
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 0.85rem;
+  transition: all 0.2s ease;
+  color: var(--text-secondary);
+  border-bottom: 2px solid transparent;
+}
+
+.tab-btn.active, .tab-btn:hover {
+  background-color: var(--background-light);
+  color: var(--primary-color);
+  border-bottom: 2px solid var(--primary-color);
+}
+
+#conversations-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.conversation-item {
+  display: flex;
+  flex-direction: column;
+  padding: 1rem 1.2rem;
+  cursor: pointer;
+  transition: background-color 0.2s, transform 0.2s;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.conversation-item:hover {
+  background-color: #f0f2f5; /* Cinza claro */
+}
+
+.conversation-item.active {
+  background-color: #e6f3ff; /* Azul claro */
+}
+
+.conversation-item .conversation-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0;
+  border: none;
+  margin-bottom: 5px;
+}
+
+.conversation-item .left {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+
+.source-icon {
+  font-size: 1.2rem;
+}
+.source-icon.whatsapp { color: var(--secondary-color); }
+.source-icon.chatbot { color: #3b82f6; } /* Azul */
+
+.unread-badge {
+  background-color: var(--danger-color);
+  color: white;
+  font-size: 0.7rem;
+  font-weight: bold;
+  padding: 3px 8px;
+  border-radius: 10px;
+}
+
+.conversation-preview {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-left: 2.1rem; /* Alinha com o nome */
+}
+
+/* --- Coluna 2: Painel do Chat --- */
+.chat-panel {
+  flex: 1; /* Ocupa o espaço restante */
+  display: flex;
+  flex-direction: column;
+  background-color: var(--background-chat);
+  overflow: hidden;
+}
+
+.chat-header {
+  padding: 1rem 1.5rem;
+  background-color: var(--background-white);
+  border-bottom: 1px solid var(--border-color);
+  font-weight: 600;
+  font-size: 1.1rem;
+  color: var(--text-primary);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  height: 70px; /* Mesma altura do header principal */
+}
+
+#chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem;
+  background-image: url("https://i.imgur.com/ryN9b9Y.png"); /* Padrão de fundo sutil */
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.message {
+  max-width: 65%;
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  line-height: 1.4;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  word-wrap: break-word;
+  position: relative;
+}
+
+.message-in {
+  background-color: var(--background-white);
+  align-self: flex-start;
+}
+
+.message-out {
+  background-color: var(--message-out-bg);
+  align-self: flex-end;
+}
+
+.chat-input-area {
+  padding: 1rem;
+  background-color: #f0f2f5; /* Cinza claro, como no WhatsApp */
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-shrink: 0;
+}
+
+#message-input {
+  flex: 1;
+  padding: 0.85rem 1.2rem;
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  resize: none;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+}
+#message-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(18, 140, 126, 0.2);
+}
+
+.chat-input-area .btn-icon {
+  background: none;
+  border: none;
+  font-size: 1.4rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.chat-input-area .btn-icon:hover {
+  background-color: #d1d5db;
+  color: var(--primary-color);
+}
+
+#send-message-btn {
+  background-color: var(--primary-color);
+  color: white;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#send-message-btn:hover {
+  background-color: var(--primary-color-dark);
+  color: white;
+}
+
+/* --- Coluna 3: Detalhes e Tabulação --- */
+.details-panel {
+  width: 380px;
+  min-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  height: 100%;
+  overflow-y: auto;
+  background-color: var(--background-light);
+  border-left: 1px solid var(--border-color);
+  padding: 1.5rem;
+  transition: all 0.3s ease;
+}
+
+/* Scrollbar customizada para o painel de detalhes */
+.details-panel::-webkit-scrollbar {
+  width: 8px;
+}
+.details-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+.details-panel::-webkit-scrollbar-thumb {
+  background-color: #ccc;
+  border-radius: 4px;
+}
+
+.details-section {
+  background-color: var(--background-white);
+  border-radius: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.details-section h4 {
+  margin: 0;
+  padding: 0.85rem 1.2rem;
+  font-size: 1rem;
+  font-weight: 600;
+  background: var(--background-light);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.details-section h4 i {
+  color: var(--primary-color);
+}
+
+.details-content {
+  padding: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.form-group {
+  margin-bottom: 0.75rem;
+}
+
+.form-group label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-bottom: 6px;
+  color: var(--text-secondary);
+}
+
+.form-group label.required::after {
+  content: " *";
+  color: var(--danger-color);
+}
+
+.form-group select,
+.form-group textarea,
+.form-group input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+}
+
+.form-group select:focus,
+.form-group textarea:focus,
+.form-group input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(18, 140, 126, 0.2);
+}
+
+.btn-primary {
+  width: 100%;
+  padding: 0.85rem;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--secondary-color), var(--primary-color));
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: 10px;
+}
+
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(37, 211, 102, 0.3);
+}
+
+.btn-primary:disabled {
+  background: #adb5bd;
+  cursor: not-allowed;
+}
+
+/* --- Seção de Respostas Rápidas --- */
+.quick-responses-section .details-content {
+  padding: 0.8rem;
+  gap: 0.5rem;
+}
+
+.quick-btn {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background-color: var(--background-light);
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+}
+
+.quick-btn:hover {
+  background-color: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+  transform: translateX(3px);
+}
+
+/* --- Controles de Gravação de Áudio --- */
+.audio-recording-controls {
+  display: none; /* Mostrado via JS */
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background-color: #fffbe6;
+  border: 1px solid var(--warning-color);
+  border-radius: 8px;
+  margin-top: 10px;
+  animation: pulse-background 2s infinite;
+}
+
+@keyframes pulse-background {
+  0% { background-color: #fffbe6; }
+  50% { background-color: #fff0c2; }
+  100% { background-color: #fffbe6; }
+}
+
+.recording-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--danger-color);
+  font-weight: 600;
+}
+
+.recording-indicator .fa-circle {
+  animation: pulse-red 1.5s infinite;
+}
+
+@keyframes pulse-red {
+  0% { opacity: 1; }
+  50% { opacity: 0.4; }
+  100% { opacity: 1; }
+}
+
+.recording-timer {
+  font-family: 'Courier New', monospace;
+  font-weight: bold;
+  font-size: 1rem;
+}
+
+.recording-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.recording-actions .btn-icon {
+  font-size: 1.2rem;
+}
+.recording-actions .btn-icon.stop { color: var(--secondary-color); }
+.recording-actions .btn-icon.cancel { color: var(--danger-color); }
+
+/* --- Empty States --- */
+.empty-chat, .empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-secondary);
+  text-align: center;
+  padding: 2rem;
+}
+
+.empty-chat i, .empty-state i {
+  font-size: 4rem;
+  color: #d1d5db;
+  margin-bottom: 1rem;
+}
+
+.empty-chat p, .empty-state p {
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+/* --- Responsividade --- */
+@media (max-width: 1300px) {
+  .conversations-panel {
+    width: 320px;
+    min-width: 300px;
+  }
+  .details-panel {
+    width: 340px;
+    min-width: 320px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .atendimento-container {
+    /* Esconde o painel de detalhes em telas menores */
+    grid-template-columns: 320px 1fr;
+  }
+  .details-panel {
+    display: none; /* Oculta o painel de detalhes */
+  }
+}
+
+@media (max-width: 768px) {
+  .atendimento-container {
+    /* Transforma em uma única coluna, mostrando apenas a lista ou o chat */
+    flex-direction: column;
+  }
+  /* Em telas pequenas, o painel de conversas some quando um chat é selecionado */
+  .conversations-panel {
+    width: 100%;
+    height: 100%;
+    border-right: none;
+  }
+  .chat-panel {
+    /* Por padrão, o chat fica escondido. JS irá mostrar quando uma conversa for clicada */
+    display: none;
+    position: absolute;
+    top: 70px; /* Abaixo do header */
+    left: 70px; /* Ao lado do menu */
+    width: calc(100% - 70px);
+    height: calc(100vh - 70px);
+    z-index: 10;
+  }
+  .chat-panel.active-mobile {
+    display: flex; /* JS adicionará esta classe para mostrar o chat */
+  }
+}

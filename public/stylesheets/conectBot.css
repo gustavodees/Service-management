@@ -1,0 +1,138 @@
+.conectacao-bot {
+  max-width: 1200px;
+  margin-left: 3%;
+}
+
+.page-title {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 30px;
+  color: var(--text-color-dark);
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.title-icon {
+  color: var(--primary-color);
+  font-size: 2rem;
+}
+
+#bot-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 20px;
+}
+
+/* Card de Conexão */
+.zap-card, .bot-card {
+  background: var(--container-bg-color);
+  border-radius: var(--border-radius-md);
+  border-left: 5px solid var(--primary-color);
+  box-shadow: var(--shadow-md);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  transition: var(--transition-fast);
+}
+
+.zap-card:hover, .bot-card:hover {
+  transform: translateY(-5px);
+  box-shadow: var(--shadow-lg);
+}
+
+.zap-card.disconnected, .bot-card.disconnected {
+  border-left-color: var(--text-color-muted);
+}
+
+.zap-card-info, .bot-card-info {
+  font-size: 1rem;
+  word-break: break-all;
+}
+
+.zap-card-info b, .bot-card-info b {
+  font-weight: 600;
+}
+
+.zap-card-info .device-id, .bot-card-info .device-id {
+  font-family: monospace;
+  color: var(--text-color-muted);
+  font-size: 0.9rem;
+}
+
+/* Status da Conexão */
+.zap-card-status, .bot-card-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.status-dot.connected {
+  background-color: #28a745;
+}
+
+.status-dot.disconnected {
+  background-color: #dc3545;
+}
+
+/* Ações do Card */
+.zap-card-actions, .bot-card-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: auto;
+}
+
+.card-button {
+  padding: 8px 16px;
+  border-radius: var(--border-radius-sm);
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  transition: var(--transition-fast);
+  font-size: 0.9rem;
+}
+
+.card-button.open {
+  background-color: var(--primary-color);
+  color: var(--text-color-light);
+}
+
+.card-button.open:hover {
+  background-color: var(--primary-hover);
+}
+
+.card-button.remove {
+  background-color: #fee2e2;
+  color: #dc3545;
+}
+
+.card-button.remove:hover {
+  background-color: #dc3545;
+  color: var(--text-color-light);
+}
+
+/* Botão de Adicionar Nova Conexão */
+#add-bot-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  background: var(--primary-color);
+  color: var(--text-color-light);
+  border-radius: 50%;
+  box-shadow: var(--shadow-lg);
+  font-size: 2rem;
+  transition: var(--transition-fast);
+  cursor: pointer;
+  text-decoration: none;
+  margin-left: 1%;
+}

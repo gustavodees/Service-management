@@ -1,0 +1,124 @@
+/* Container principal - centraliza o card */
+.whatsapp-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: calc(100vh - 80px); /* Altura da tela menos o header */
+  background-color: #f4f7f6;
+  padding: 20px;
+}
+
+/* Card principal onde o conteúdo fica */
+.whatsapp-card {
+  background-color: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  padding: 35px 40px;
+  text-align: center;
+  width: 100%;
+  max-width: 400px; /* Largura máxima do card */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Título "Conectar Novo Dispositivo" */
+.whatsapp-card h3 {
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 10px;
+}
+
+/* Texto "Escaneie o QR Code com seu celular" */
+.scan-button {
+  color: #6c757d; /* Cor cinza sutil */
+  font-size: 0.95rem;
+  margin-bottom: 25px;
+}
+
+/* Placeholder para o QR Code */
+#qrcode-placeholder {
+  position: relative; /* Garante que o QR code gerado fique dentro deste container */
+  border: 2px dashed #e0e0e0;
+  border-radius: 8px;
+  width: 280px;
+  height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px; /* Cria uma margem interna para o QR code não colar na borda */
+  box-sizing: border-box; /* Garante que o padding não aumente o tamanho total */
+  transition: border-color 0.3s ease;
+}
+
+/* Estilo para o canvas/imagem do QR Code gerado pela biblioteca */
+#qrcode-placeholder img {
+  max-width: 100%;
+  height: auto !important; /* Garante a proporção correta */
+  border-radius: 4px; /* Suaviza as bordas do QR code */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); /* Adiciona uma sombra sutil para destaque */
+}
+
+/* A biblioteca qrcode.js gera um <canvas> que sobrepõe a <img>. Vamos escondê-lo. */
+#qrcode-placeholder canvas {
+  display: none;
+}
+
+/* Conteúdo do placeholder (texto "Aguardando QR Code...") */
+.placeholder-content {
+  color: #888;
+  font-size: 1rem;
+}
+
+/* Container do texto de status na parte inferior */
+.status-text-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 25px;
+  font-size: 0.9rem;
+  color: #6c757d;
+}
+
+/* Ponto colorido que indica o status */
+.status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 8px;
+  background-color: #ffc107; /* Amarelo (Conectando) por padrão */
+  transition: background-color 0.3s ease;
+}
+
+.status-dot.connecting {
+  background-color: #ffc107; /* Amarelo */
+}
+
+.status-dot.connected {
+  background-color: #28a745; /* Verde */
+}
+
+.status-dot.error {
+  background-color: #dc3545; /* Vermelho */
+}
+
+.status-dot.disconnected {
+  background-color: #6c757d; /* Cinza */
+}
+
+/* Responsividade para telas menores */
+@media (max-width: 480px) {
+  .whatsapp-card {
+    padding: 25px 20px;
+  }
+
+  #qrcode-placeholder {
+    width: 240px;
+    height: 240px;
+  }
+
+  .whatsapp-card h3 {
+    font-size: 1.2rem;
+  }
+}

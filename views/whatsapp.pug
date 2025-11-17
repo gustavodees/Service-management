@@ -1,223 +1,116 @@
 extends layout
 
+block head
+  link(rel="stylesheet", href="/stylesheets/dashboard.css")
+  link(rel="stylesheet", href="/stylesheets/whatsapp.css")
+  // Adiciona Font Awesome
+  link(rel="stylesheet", href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css")
+
 block content
   include header
   .whatsapp-container
-    h1.page-title 
-      i.fa-brands.fa-whatsapp.title-icon
-      | Conectar WhatsApp
-    
-    .connection-status
-      h3 Status da Conexão
-      .status-indicator(class="disconnected")
+    .whatsapp-card
+      h3 Conectar Novo Dispositivo
+      .scan-button Escaneie o QR Code com seu celular
+      
+      // Container onde o QR Code será gerado
+      #qrcode-placeholder
+        // A imagem será inserida aqui
+        img#qrcode-image(src="", alt="QR Code", style="display: none;")
+        .placeholder-content
+          span Aguardando QR Code...
+
+      // Texto de status
+      .status-text-container
+        .status-dot(id="status-dot")
         span#status-text Aguardando conexão...
-    
-    .qrcode-section
-      h3 Escaneie o QR Code para conectar
-      .qrcode-container
-        #qrcode-placeholder
-          p Aguardando geração do QR Code...
-    
-    .whatsapp-controls
-      button.action-button.disconnect-button#disconnect-btn
-        i.fa-solid.fa-power-off
-        | Desconectar
-    
-    .whatsapp-info
-      h3 Como usar:
-      ol
-        li Escaneie o QR Code com seu celular
-        li Aguarde a confirmação da conexão
-        li Agora você pode usar o chatbot automatizado
-
-  // estilos rápidos para o indicador de status (ajusta largura ao texto)
-  style.
-    .connection-status { text-align: center;  }
-    .qrcode-container { text-align: center; margin-top: 12px; }
-
-    .status-indicator {
-      display: inline-block;
-      padding: 10px 22px;         /* largura proporcional ao conteúdo */
-      border-radius: 999px;       /* "pill" */
-      font-weight: 700;
-      white-space: nowrap;        /* não quebra em linhas, facilita largura proporcional */
-      box-shadow: 0 8px 20px rgba(0,0,0,0.12);
-      transition: background .22s ease, color .22s ease, transform .12s ease;
-      vertical-align: middle;
-      text-align: center;
-    }
-    .status-indicator.connected { background: linear-gradient(90deg,#29d17b,#0ea85a); color: #002800; }
-    .status-indicator.connecting { background: linear-gradient(90deg,#ffec99,#ffd24d); color: #2b2b00; }
-    .status-indicator.error { background: linear-gradient(90deg,#ff8a80,#e53935); color: #fff; }
-    .status-indicator.disconnected { background: linear-gradient(90deg,#d0d6da,#bfc7cc); color:#1b1b1b; }
 
   script.
-    (function() {
-      function getQueryParam(name) {
-        const params = new URLSearchParams(window.location.search);
-        return params.get(name);
-      }
+    document.addEventListener('DOMContentLoaded', async () => {
+      const getQueryParam = (name) => new URLSearchParams(window.location.search).get(name);
       const deviceId = getQueryParam('deviceId');
       const qrcodePlaceholder = document.getElementById('qrcode-placeholder');
+      const qrcodeImage = document.getElementById('qrcode-image');
       const statusTextEl = document.getElementById('status-text');
-      const statusIndicatorEl = document.querySelector('.status-indicator');
+      const statusDotEl = document.getElementById('status-dot');
 
-      function setStatus(state, text) {
-        if (!statusIndicatorEl) return;
-        ['connected','connecting','error','disconnected'].forEach(c => statusIndicatorEl.classList.remove(c));
-        statusIndicatorEl.classList.add(state);
-        if (statusTextEl && typeof text === 'string') statusTextEl.textContent = text;
-      }
+      const setStatus = (state, text) => {
+        if (!statusTextEl || !statusDotEl) return;
+        
+        statusDotEl.className = 'status-dot';
+        statusDotEl.classList.add(state);
+        
+        statusTextEl.textContent = text;
+      };
 
-      // Se não houver deviceId: solicitar criação (fluxo existente)
       if (!deviceId) {
-        (async function createAndRedirect() {
-          try {
-            const resp = await fetch('/whatsapp/new-device', { method: 'POST' });
-            const json = await resp.json();
-            if (json && json.success && json.deviceId) {
-              const url = new URL(window.location.href);
-              url.searchParams.set('deviceId', json.deviceId);
-              window.location.href = url.toString();
-              return;
-            } else {
-              setStatus('error', 'Falha ao criar novo device');
-              console.warn('new-device falhou', json);
-            }
-          } catch (e) {
-            setStatus('error', 'Erro ao criar device');
-            console.warn('Erro ao criar novo device:', e);
+        setStatus('connecting', 'Criando novo dispositivo...');
+        try {
+          const res = await fetch('/whatsapp/new-device', { method: 'POST' });
+          const data = await res.json();
+          if (data.success && data.deviceId) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('deviceId', data.deviceId);
+            window.location.href = url.toString();
+          } else {
+            setStatus('error', 'Falha ao criar novo dispositivo.');
           }
-        })();
+        } catch (error) {
+          setStatus('error', 'Erro ao criar dispositivo.');
+        }
         return;
       }
 
-      // FORÇA inicialização imediata do client no servidor (se necessário)
-      (async function startDevice() {
-        try {
-          await fetch('/whatsapp/start/' + encodeURIComponent(deviceId), { method: 'POST' });
-        } catch (e) {
-          setStatus('error', 'Erro ao iniciar dispositivo');
-          console.warn('startDevice erro', e);
-        }
-      })();
-
-      // WebSocket connection to receive realtime QR and status updates
-      const wsUrl = `ws://${window.location.hostname}:${window.location.port}/ws-atendimento`;
-      let ws = null;
-      let polling = null;
-
-      function startPollingFallback() {
-        if (polling) return;
-        checkQr();
-        polling = setInterval(checkQr, 1000);
-      }
-
       try {
-        ws = new WebSocket(wsUrl);
+        await fetch(`/whatsapp/start/${encodeURIComponent(deviceId)}`, { method: 'POST' });
       } catch (e) {
-        ws = null;
+        setStatus('error', 'Erro ao iniciar dispositivo');
+        console.error('Falha ao iniciar dispositivo:', e);
       }
 
-      if (ws) {
-        ws.onopen = function() {
-          // ask server to bind/initialize this device on our session socket
-          ws.send(JSON.stringify({ type: 'connect', deviceId }));
-        };
+      const ws = new WebSocket(`ws://${window.location.host}`);
 
-        ws.onmessage = function(event) {
-          try {
-            const data = JSON.parse(event.data || '{}');
-            // only handle messages for our device when provided
-            if (data.deviceId && String(data.deviceId) !== String(deviceId)) return;
-
-            switch (data.type) {
-              case 'qr':
-                if (data.qr) {
-                  setStatus('connecting', 'Gerando QR Code — escaneie com o app');
-                  if (qrcodePlaceholder) qrcodePlaceholder.innerHTML = '<img src="' + data.qr + '" alt="QR Code" style="max-width:100%; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,0.5)" />';
-                }
-                break;
-              case 'authenticated':
-              case 'whatsapp-connected':
-              case 'ready':
-                setStatus('connected', data.status || 'Conectado — redirecionando...');
-                if (qrcodePlaceholder) qrcodePlaceholder.innerHTML = '';
-                // stop polling if active
-                if (polling) { clearInterval(polling); polling = null; }
-                // redirect to conectZap when ready/authenticated
-                if (data.isReady || data.type === 'ready' || data.type === 'whatsapp-connected' || data.type === 'authenticated') {
-                  setTimeout(() => { window.location.href = '/conectZap'; }, 500);
-                }
-                break;
-              case 'disconnected':
-                setStatus('disconnected', data.status || 'WhatsApp desconectado');
-                if (qrcodePlaceholder) qrcodePlaceholder.innerHTML = '<p>Aguardando geração do QR Code...</p>';
-                break;
-              case 'error':
-                setStatus('error', data.status || 'Erro ao conectar');
-                break;
-            }
-          } catch (e) {
-            console.warn('ws message parse error', e);
-          }
-        };
-
-        ws.onerror = function() {
-          console.warn('WebSocket erro — usando fallback polling');
-          startPollingFallback();
-        };
-
-        ws.onclose = function() {
-          // fallback to polling on close
-          startPollingFallback();
-        };
-      } else {
-        // unable to create websocket — use polling
-        startPollingFallback();
-      }
-
-      // Polling fallback (keeps compatibility)
-      async function checkQr() {
+      ws.onopen = () => console.log('WebSocket conectado.');
+      ws.onerror = (err) => {
+        console.error('Erro no WebSocket:', err);
+        setStatus('error', 'Erro na conexão em tempo real.');
+      };
+      
+      ws.onmessage = (event) => {
         try {
-          const res = await fetch('/whatsapp/qrcode/' + encodeURIComponent(deviceId));
-          const data = await res.json();
-          if (!data) {
-            setStatus('error', 'Sem resposta do servidor');
-            return;
-          }
+          const data = JSON.parse(event.data);
+          if (data.deviceId !== deviceId) return;
 
-          if (data.success === false && data.error) {
-            setStatus('error', `Erro: ${String(data.error).slice(0,40)}`);
-          } else if (data.isReady) {
-            setStatus('connected', 'Conectado — redirecionando...');
-          } else if (data.qr) {
-            setStatus('connecting', 'Gerando QR Code — escaneie com o app');
-          } else {
-            setStatus('connecting', 'Aguardando conexão...');
-          }
-
-          if (data.qr && qrcodePlaceholder) {
-            qrcodePlaceholder.innerHTML = '<img src="' + data.qr + '" alt="QR Code" style="max-width:100%; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,0.5)" />';
-          } else if (qrcodePlaceholder && !data.qr && !data.isReady) {
-            qrcodePlaceholder.innerHTML = '<p>Aguardando geração do QR Code...</p>';
-          }
-
-          if (data && data.isReady) {
-            if (polling) { clearInterval(polling); polling = null; }
-            window.location.href = '/conectZap';
-            return;
+          switch (data.type) {
+            case 'qr':
+              setStatus('connecting', 'QR Code recebido. Escaneie abaixo.');
+              
+              // A mágica acontece aqui: o servidor já envia a imagem pronta (data.qrDataURL)
+              if (data.qrDataURL) {
+                qrcodePlaceholder.innerHTML = ''; // Limpa o "Aguardando..."
+                qrcodeImage.src = data.qrDataURL; // Define a imagem
+                qrcodeImage.style.display = 'block'; // Mostra a imagem
+                qrcodePlaceholder.appendChild(qrcodeImage); // Garante que a imagem está dentro do placeholder
+              } else {
+                setStatus('error', 'Recebido QR Code inválido do servidor.');
+              }
+              break;
+            case 'whatsapp-connected': // Corrigido: O evento enviado pelo manager é 'whatsapp-connected'
+              setStatus('connected', 'Dispositivo conectado! Redirecionando...');
+              setTimeout(() => { window.location.href = '/atendimento'; }, 1500);
+              break;
+            case 'disconnected':
+              setStatus('disconnected', 'Dispositivo desconectado. Recarregue a página para tentar novamente.');
+              if (qrcodeImage) qrcodeImage.style.display = 'none';
+              qrcodePlaceholder.innerHTML = '<div class="placeholder-content"><span>Dispositivo desconectado.</span></div>';
+              break;
+            case 'error':
+              setStatus('error', data.status || 'Erro na conexão.');
+              qrcodePlaceholder.innerHTML = '<div class="placeholder-content"><span style="color: red;">Não foi possível gerar o QR Code. Tente novamente.</span></div>';
+              break;
           }
         } catch (e) {
-          console.warn('checkQr whatsapp erro', e);
+          console.warn('Erro ao processar mensagem do WebSocket:', e);
         }
-      }
-
-      // initial quick check to show existing state
-      checkQr();
-
-      window.addEventListener('beforeunload', function() {
-        try { if (ws && ws.readyState === WebSocket.OPEN) ws.close(); } catch (_) {}
-        try { if (polling) clearInterval(polling); } catch (_) {}
-      });
-    })();
+      };
+    });

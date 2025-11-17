@@ -1,0 +1,41 @@
+-- =====================================================================
+-- SCRIPT SQL PARA CORRIGIR TABELA E INSERIR EMPRESA DE TESTE
+-- =====================================================================
+--
+-- Este script cria:
+-- 1. Uma empresa fictícia chamada "Empresa de Teste".
+-- 2. Um usuário administrador para essa empresa.
+--
+-- E TAMBÉM CORRIGE A ESTRUTURA DO BANCO:
+-- Adiciona a coluna `empresa_id` na tabela `usuarios`, que é
+-- essencial para o sistema de login funcionar.
+--
+-- DADOS DE ACESSO:
+-- CNPJ: 11.222.333/0001-44
+-- Email do Admin: admin@teste.com
+-- Senha do Admin: 123456
+--
+-- IMPORTANTE:
+-- As senhas já estão no formato BCRYPT, o mesmo que a sua aplicação usa.
+--
+-- =====================================================================
+
+START TRANSACTION;
+
+-- ETAPA 1: CORREÇÃO DA TABELA (Execute apenas uma vez)
+-- Adiciona a coluna para ligar o usuário à empresa. O `IF NOT EXISTS` evita erros se a coluna já foi criada.
+ALTER TABLE `usuarios` ADD COLUMN IF NOT EXISTS `empresa_id` INT NULL AFTER `id`;
+
+-- ETAPA 2: Insere a nova empresa com status 2 (aprovado) e senha já no formato bcrypt.
+-- A senha da empresa aqui é 'senha_empresa_123'
+INSERT INTO `empresas` (`nome_fantasia`, `razao_social`, `cnpj`, `status`, `senha_empresa`, `created_at`)
+VALUES ('Empresa de Teste', 'Empresa de Teste LTDA', '11222333000144', 2, '$2a$10$pL0Bcks1KyL8xT.rXo5Wyuw3xIy/FguXRv3OSsNZKWbKP.AudNMpq', NOW())
+ON DUPLICATE KEY UPDATE `nome_fantasia` = VALUES(`nome_fantasia`);
+
+-- ETAPA 3: Insere o usuário administrador, agora com a coluna `empresa_id` correta.
+-- A senha do usuário aqui é '123456'
+INSERT INTO `usuarios` (`empresa_id`, `nome`, `email`, `senha`, `tipo`, `created_at`)
+VALUES
+(LAST_INSERT_ID(), 'Admin Teste', 'admin@teste.com', '$2a$10$pL0Bcks1KyL8xT.rXo5Wyuw3xIy/FguXRv3OSsNZKWbKP.AudNMpq', 'admin', NOW());
+
+COMMIT;

@@ -1,104 +1,136 @@
 extends layout
 
+block head
+  link(rel="stylesheet", href="/stylesheets/dashboard.css")
+  script(src="/javascripts/dashboard.js" defer)
+
 block content
   include header
-  .conectacao-zap
-    h1.page-title 
-      i.fa-brands.fa-whatsapp.title-icon
-      | Conectar WhatsApp
+  // Adicionado um container principal para o novo layout
+  .page-container
+    .page-header
+      div
+        h1.page-title Conexões WhatsApp
+        p.page-subtitle Gerencie os dispositivos conectados da sua empresa.
+      button.btn.btn-primary(id="add-new-device-btn")
+        i.fas.fa-plus.mr-2
+        | Adicionar Dispositivo
 
-    .zap-list#zap-list
-      // Aqui vão os cartões de conexões
+    if error
+      .alert.alert-danger= error
 
-    a#add-zap-btn(href="javascript:void(0)" style=" display:inline-block; cursor:pointer;")
-      i.fa-solid.fa-square-plus.title-icon
+    if devices.length === 0
+      .empty-state
+        i.fas.fa-mobile-alt.empty-icon
+        h3 Nenhum dispositivo encontrado
+        p Clique em "Adicionar Dispositivo" para conectar seu primeiro número de WhatsApp.
+    else
+      // Novo layout em cards
+      .device-grid
+        each device in devices
+          .device-card(data-device-id=device.device_id)
+            .card-header
+              .device-info
+                i.fab.fa-whatsapp.device-icon
+                .device-details
+                  h5.device-name= device.number || 'Novo Dispositivo'
+                  span.device-id= device.device_id
+              -
+                let statusClass = 'disconnected';
+                let statusText = 'Desconhecido';
+                if (device.status === 'connected') { statusClass = 'connected'; statusText = 'Conectado'; }
+                else if (device.status === 'connecting') { statusClass = 'connecting'; statusText = 'Conectando'; }
+                else if (device.status === 'disconnected') { statusClass = 'disconnected'; statusText = 'Desconectado'; }
+              .status-badge(class=statusClass)
+                .status-dot
+                span= statusText
+            .card-body
+              .info-item
+                span Última Conexão
+                strong= device.last_connected ? new Date(device.last_connected).toLocaleString('pt-BR') : 'Nunca'
+            .card-footer
+              if device.status !== 'connected'
+                button.btn.btn-sm.btn-success.connect-btn(data-device-id=device.device_id)
+                  i.fas.fa-play.mr-1
+                  | Conectar
+              if device.status === 'connected'
+                button.btn.btn-sm.btn-warning.disconnect-btn(data-device-id=device.device_id)
+                  i.fas.fa-stop.mr-1
+                  | Desconectar
+              button.btn.btn-sm.btn-danger.remove-btn(data-device-id=device.device_id)
+                i.fas.fa-trash.mr-1
+                | Remover
 
-  script.
-    document.addEventListener('DOMContentLoaded', function() {
-      const zapList = document.getElementById('zap-list');
-      const addBtn = document.getElementById('add-zap-btn');
+    // Modal para exibir o QR Code
+    #qrModal.modal(tabindex="-1")
+      .modal-dialog.modal-dialog-centered
+        .modal-content
+          .modal-header
+            h5.modal-title Escaneie para Conectar
+            button.close(type="button", data-dismiss="modal")
+              span &times;
+          .modal-body.text-center
+            #qrcode-container
+              p Aguardando QR Code...
 
-      let devicesCache = [];
-      function renderDevices(devices) {
-        devicesCache = devices || devicesCache;
-        zapList.innerHTML = '';
-        devices.forEach(device => {
-          const div = document.createElement('div');
-          div.className = 'zap-status-box';
-          div.style = 'display:inline-block; margin:8px; padding:10px 20px; border-radius:8px; background:#f8f9fa; border:1px solid #25d366; color:#222; font-weight:600; font-size:1rem; vertical-align:middle;';
-          div.innerHTML = `
-            <div>
-              <span>WhatsApp: <b>${device.number ? device.number : '<span style="font-family:monospace;color:#666">' + device.deviceId + '</span>'}</b></span>
-            </div>
-            <div style="margin: 6px 0 10px 0;">
-              <span>Status: <b style="color:${device.isReady ? '#128c7e' : '#dc3545'}">${device.isReady ? 'conectado' : 'conectando...'}</b></span>
-            </div>
-            <button onclick="window.open('/whatsapp?deviceId=${device.deviceId}', '_self')" style="margin-right:10px;">Abrir</button>
-            <button onclick="removerZap('${device.deviceId}')" style="color:#fff; background:#dc3545; border:none; border-radius:4px; padding:4px 10px; cursor:pointer;">Remover</button>
-          `;
-          zapList.appendChild(div);
-        });
-      }
-
-      function fetchDevices() {
-        fetch('/whatsapp/all-status')
-          .then(res => res.json())
-          .then(data => {
-            if (data.success) renderDevices(data.devices);
+    //- Adicionado: Script para fazer o botão de adicionar dispositivo funcionar
+    script.
+      document.addEventListener('DOMContentLoaded', function() {
+        const addDeviceBtn = document.getElementById('add-new-device-btn');
+        if (addDeviceBtn) {
+          addDeviceBtn.addEventListener('click', () => {
+            // Redireciona para a página que inicia o processo de criação e QR Code
+            window.location.href = '/whatsapp';
           });
-      }
+        }
 
-      // WebSocket listener to update device number/status in real-time
-      (function setupWs() {
-        const wsUrl = `ws://${window.location.hostname}:${window.location.port}/ws-atendimento`;
-        let ws = null;
-        try { ws = new WebSocket(wsUrl); } catch (e) { ws = null; }
-        if (!ws) return;
-        ws.onopen = function() {
-          // nothing to send; this socket will receive user-scoped broadcasts
-        };
-        ws.onmessage = function(ev) {
-          try {
-            const data = JSON.parse(ev.data || '{}');
-            if (!data || !data.type) return;
-            if (data.type === 'whatsapp-connected' && data.deviceId) {
-              // update local cache and re-render quickly
-              const idx = devicesCache.findIndex(d => String(d.deviceId) === String(data.deviceId));
-              if (idx !== -1) {
-                devicesCache[idx].number = data.number || devicesCache[idx].number || null;
-                devicesCache[idx].isReady = true;
-                renderDevices(devicesCache);
-              } else {
-                // if not present, refresh full list
-                fetchDevices();
+        // Adicionado: Lógica para os botões de remover, conectar e desconectar
+        document.querySelectorAll('.remove-btn').forEach(button => {
+          button.addEventListener('click', async (event) => {
+            const deviceId = event.target.closest('button').dataset.deviceId;
+            if (confirm(`Tem certeza que deseja remover o dispositivo ${deviceId}? Esta ação não pode ser desfeita.`)) {
+              try {
+                const response = await fetch(`/whatsapp/remove-device?deviceId=${deviceId}`, { method: 'DELETE' });
+                const result = await response.json();
+                if (result.success) {
+                  alert('Dispositivo removido com sucesso!');
+                  window.location.reload();
+                } else {
+                  alert('Erro ao remover dispositivo: ' + (result.message || 'Erro desconhecido'));
+                }
+              } catch (error) {
+                alert('Erro de comunicação ao tentar remover o dispositivo.');
               }
             }
-          } catch (e) { console.warn('ws parse error conectZap', e); }
-        };
-        ws.onerror = function() { /* ignore */ };
-      })();
+          });
+        });
 
-      addBtn.onclick = function() {
-        // Limpa o deviceId para forçar nova conexão
-        localStorage.removeItem('currentDeviceId');
-        window.location.href = '/whatsapp'; // Agora abre na mesma aba
-      };
+        document.querySelectorAll('.connect-btn').forEach(button => {
+          button.addEventListener('click', (event) => {
+            const deviceId = event.target.closest('button').dataset.deviceId;
+            // Redireciona para a página do QR Code com o deviceId específico
+            window.location.href = `/whatsapp?deviceId=${deviceId}`;
+          });
+        });
 
-      fetchDevices();
-      setInterval(fetchDevices, 5000); // Atualiza a lista a cada 5s
-    });
-
-    window.removerZap = function(deviceId) {
-      if (confirm('Deseja remover esta conexão do WhatsApp?')) {
-        fetch(`/whatsapp/remove-device?deviceId=${deviceId}`, { method: 'DELETE' })
-          .then(res => res.json())
-          .then(data => {
-            if (data.success) {
-              alert('Conexão removida com sucesso!');
-              fetchDevices(); // Atualiza a lista sem reload
-            } else {
-              alert('Erro ao remover: ' + (data.message || ''));
+        // Adicionado: Lógica para o botão de desconectar
+        document.querySelectorAll('.disconnect-btn').forEach(button => {
+          button.addEventListener('click', async (event) => {
+            const deviceId = event.target.closest('button').dataset.deviceId;
+            if (confirm(`Tem certeza que deseja desconectar o dispositivo ${deviceId}? Você precisará escanear o QR Code novamente.`)) {
+              try {
+                const response = await fetch(`/whatsapp/disconnect-device?deviceId=${deviceId}`, { method: 'POST' });
+                const result = await response.json();
+                if (result.success) {
+                  alert('Dispositivo desconectado com sucesso!');
+                  window.location.reload();
+                } else {
+                  alert('Erro ao desconectar dispositivo: ' + (result.message || 'Erro desconhecido'));
+                }
+              } catch (error) {
+                alert('Erro de comunicação ao tentar desconectar o dispositivo.');
+              }
             }
           });
-      }
-    };
+        });
+      });

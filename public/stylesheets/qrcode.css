@@ -1,0 +1,38 @@
+.qrcode-container {
+  display: flex;
+  justify-content: center;
+  margin: 20px 0;
+}
+
+#qrcode-placeholder {
+  width: 250px;
+  height: 250px;
+  border: 2px dashed #25d366;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: white;
+  border-radius: 15px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+}
+
+/* garante que a imagem do QR fique um pouco menor que o container */
+#qrcode-placeholder img {
+  max-width: 240px;
+  max-height: 240px;
+  height: auto;
+  border-radius: 8px;
+}
+
+/* Ajuste responsivo: ainda menor em telas pequenas */
+@media (max-width: 480px) {
+  #qrcode-placeholder {
+    width: 160px;
+    height: 160px;
+  }
+  #qrcode-placeholder img {
+    max-width: 140px;
+    max-height: 140px;
+  }
+}

@@ -1,76 +1,185 @@
 extends layout
 
+block head
+  // Garante que o estilo do painel seja carregado
+  link(rel="stylesheet", href="/stylesheets/dashboard.css")
+  // Garante que o menu recolhível funcione
+  script(src="/javascripts/dashboard.js" defer)
+
 block content
   include header
-  .conectacao-bot
-    h1.page-title 
-      i.fa-solid.fa-robot.title-icon
-      | Conectar ChatBot
+  .page-container
+    .page-header
+      div
+        h1.page-title Conexões Robô
+        p.page-subtitle Gerencie os bots de atendimento conectados da sua empresa.
+      button.btn.btn-primary(id="add-new-device-btn")
+        i.fas.fa-plus.mr-2
+        | Adicionar Dispositivo
 
-    .bot-list#bot-list
-      // Aqui vão os cartões de conexões
+    if error
+      .alert.alert-danger= error
 
-    a#add-bot-btn(href="javascript:void(0)" style="margin-top:20px; display:inline-block; cursor:pointer;") 
-      i.fa-solid.fa-square-plus.title-icon
+    if devices.length === 0
+      .empty-state
+        i.fas.fa-robot.empty-icon
+        h3 Nenhum bot encontrado
+        p Clique em "Adicionar Dispositivo" para conectar seu primeiro bot.
+    else
+      // Layout em cards, similar ao conectZap.pug
+      .device-grid
+        each device in devices
+          .device-card(data-device-id=device.deviceIDchatbot)
+            .card-header
+              .device-info
+                i.fas.fa-robot.device-icon
+                .device-details
+                  h5.device-name= device.number || 'Novo Dispositivo'
+                  span.device-id= device.deviceIDchatbot
+              -
+                let statusClass = 'disconnected';
+                let statusText = 'Desconhecido';
+                if (device.status === 'connected') { statusClass = 'connected'; statusText = 'Conectado'; }
+                else if (device.status === 'connecting') { statusClass = 'connecting'; statusText = 'Conectando'; }
+                else if (device.status === 'disconnected') { statusClass = 'disconnected'; statusText = 'Desconectado'; }
+              .status-badge(class=statusClass)
+                .status-dot
+                span= statusText
+            .card-body
+              .info-item
+                span Última Conexão
+                strong= device.last_connected ? new Date(device.last_connected).toLocaleString('pt-BR') : 'Nunca'
+            .card-footer
+              if device.status !== 'connected'
+                button.btn.btn-sm.btn-success.connect-btn(data-device-id=device.deviceIDchatbot)
+                  i.fas.fa-play.mr-1
+                  | Conectar
+              if device.status === 'connected'
+                button.btn.btn-sm.btn-warning.disconnect-btn(data-device-id=device.deviceIDchatbot)
+                  i.fas.fa-stop.mr-1
+                  | Desconectar
+              button.btn.btn-sm.btn-danger.remove-btn(data-device-id=device.deviceIDchatbot)
+                i.fas.fa-trash.mr-1
+                | Remover
 
+    // Modal para exibir o QR Code
+    #qrModal.modal(tabindex="-1")
+      .modal-dialog.modal-dialog-centered
+        .modal-content
+          .modal-header
+            h5.modal-title Escaneie para Conectar o Bot
+            button.close(type="button", data-dismiss="modal")
+              span &times;
+          .modal-body.text-center
+            #qrcode-container
+              p Aguardando QR Code...
+
+  // Scripts para interatividade da página
   script.
     document.addEventListener('DOMContentLoaded', function() {
-      const botList = document.getElementById('bot-list');
-      const addBtn = document.getElementById('add-bot-btn');
+      const qrModal = $('#qrModal');
+      const qrContainer = document.getElementById('qrcode-container');
+      let qrCheckInterval = null;
 
-      function renderBots(bots) {
-        botList.innerHTML = '';
-        bots.forEach(bot => {
-          const div = document.createElement('div');
-          div.className = 'zap-status-box';
-          div.style = 'display:inline-block; margin:8px; padding:10px 20px; border-radius:8px; background:#f8f9fa; border:1px solid #25d366; color:#222; font-weight:600; font-size:1rem; vertical-align:middle;';
-          div.innerHTML = `
-            <div>
-              <span>ChatBot: <b>${bot.number ? bot.number : '<span style="font-family:monospace;color:#666">' + bot.deviceIDchatbot + '</span>'}</b></span>
-            </div>
-            <div style="margin: 6px 0 10px 0;">
-              <span>Status: <b style="color:${bot.isReady ? '#128c7e' : '#dc3545'}">${bot.isReady ? 'conectado' : 'conectando...'}</b></span>
-            </div>
-            <button onclick="window.location.href='/chatbot?deviceIDchatbot=${bot.deviceIDchatbot}'" style="margin-right:10px;">Abrir</button>
-            <button onclick="removerBot('${bot.deviceIDchatbot}')" style="color:#fff; background:#dc3545; border:none; border-radius:4px; padding:4px 10px; cursor:pointer;">Remover</button>
-          `;
-          botList.appendChild(div);
-        });
-      }
-
-      function fetchBots() {
-        fetch('/chatbot/all-status')
-          .then(res => res.json())
-          .then(data => {
-            if (data.success) renderBots(data.bots);
-          });
-      }
-
-      addBtn.onclick = async function() {
-        const res = await fetch('/chatbot/create-connection', { method: 'POST' });
-        const data = await res.json();
-        if (data.success && data.deviceIDchatbot) {
-          window.location.href = `/chatbot?deviceIDchatbot=${data.deviceIDchatbot}`; // abre na mesma aba
-        } else {
-          alert('Erro ao criar conexão!');
+      // Adicionar novo dispositivo
+      document.getElementById('add-new-device-btn').addEventListener('click', async () => {
+        try {
+          const response = await fetch('/chatbot/add-device', { method: 'POST' });
+          const data = await response.json();
+          if (data.success) {
+            window.location.reload();
+          } else {
+            alert('Erro ao adicionar dispositivo: ' + (data.message || 'Tente novamente.'));
+          }
+        } catch (error) {
+          console.error('Erro ao adicionar dispositivo:', error);
+          alert('Ocorreu um erro de comunicação.');
         }
-      };
+      });
 
-      fetchBots();
-      setInterval(fetchBots, 5000); // Atualiza a lista a cada 5s
-    });
+      // Conectar dispositivo
+      document.querySelectorAll('.connect-btn').forEach(button => {
+        button.addEventListener('click', function() {
+          const deviceId = this.getAttribute('data-device-id');
+          qrContainer.innerHTML = '<p>Aguardando QR Code...</p>';
+          qrModal.modal('show');
 
-    window.removerBot = function(deviceIDchatbot) {
-      if (confirm('Deseja remover esta conexão do ChatBot?')) {
-        fetch(`/chatbot/remove-device?deviceIDchatbot=${deviceIDchatbot}`, { method: 'DELETE' })
-          .then(res => res.json())
-          .then(data => {
-            if (data.success) {
-              alert('Conexão removida com sucesso!');
-              fetchBots(); // Atualiza a lista sem reload
-            } else {
-              alert('Erro ao remover: ' + (data.message || ''));
+          if (qrCheckInterval) clearInterval(qrCheckInterval);
+
+          const fetchQRCode = async () => {
+            try {
+              const response = await fetch(`/chatbot/qrcode/${deviceId}`);
+              const data = await response.json();
+
+              if (data.isReady) {
+                qrModal.modal('hide');
+                clearInterval(qrCheckInterval);
+                window.location.reload();
+                return;
+              }
+
+              if (data.qr) {
+                qrContainer.innerHTML = `<img src="${data.qr}" alt="QR Code" style="max-width:240px; height:auto; border-radius:8px;">`;
+              } else {
+                qrContainer.innerHTML = '<p>Aguardando geração do QR Code...</p>';
+              }
+            } catch (error) {
+              console.error('Erro ao buscar QR Code:', error);
+              qrContainer.innerHTML = '<p style="color: red;">Erro ao carregar QR Code.</p>';
+              clearInterval(qrCheckInterval);
             }
-          });
-      }
-    };
+          };
+
+          fetchQRCode();
+          qrCheckInterval = setInterval(fetchQRCode, 3000);
+        });
+      });
+
+      // Desconectar dispositivo
+      document.querySelectorAll('.disconnect-btn').forEach(button => {
+        button.addEventListener('click', async function() {
+          const deviceId = this.getAttribute('data-device-id');
+          if (!confirm(`Tem certeza que deseja desconectar o bot ${deviceId}?`)) return;
+
+          try {
+            const response = await fetch(`/chatbot/disconnect/${deviceId}`, { method: 'POST' });
+            const data = await response.json();
+            if (data.success) {
+              window.location.reload();
+            } else {
+              alert('Erro ao desconectar: ' + (data.message || 'Tente novamente.'));
+            }
+          } catch (error) {
+            console.error('Erro ao desconectar:', error);
+            alert('Ocorreu um erro de comunicação.');
+          }
+        });
+      });
+
+      // Remover dispositivo
+      document.querySelectorAll('.remove-btn').forEach(button => {
+        button.addEventListener('click', async function() {
+          const deviceId = this.getAttribute('data-device-id');
+          if (!confirm(`ATENÇÃO: Isso removerá o bot ${deviceId} permanentemente. Deseja continuar?`)) return;
+
+          try {
+            const response = await fetch(`/chatbot/remove-device/${deviceId}`, { method: 'POST' });
+            const data = await response.json();
+            if (data.success) {
+              window.location.reload();
+            } else {
+              alert('Erro ao remover: ' + (data.message || 'Tente novamente.'));
+            }
+          } catch (error) {
+            console.error('Erro ao remover:', error);
+            alert('Ocorreu um erro de comunicação.');
+          }
+        });
+      });
+
+      // Limpar intervalo quando o modal for fechado
+      qrModal.on('hidden.bs.modal', function() {
+        if (qrCheckInterval) clearInterval(qrCheckInterval);
+        qrContainer.innerHTML = '';
+      });
+    });

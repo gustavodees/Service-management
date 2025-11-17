@@ -1,6 +1,26 @@
 extends layout
 
+prepend head
+  style.
+    .error-page-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 40px 20px;
+      background-color: #fff;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+    .error-status { font-size: 4rem; font-weight: 700; color: var(--primary-color, #3498db); margin-bottom: 0; }
+    .error-message { font-size: 1.5rem; color: #333; margin-top: 0; margin-bottom: 20px; }
+    .error-stack { background-color: #f8f9fa; border: 1px solid #e9ecef; padding: 15px; border-radius: 6px; text-align: left; white-space: pre-wrap; word-break: break-all; max-width: 100%; overflow-x: auto; font-size: 0.85rem; color: #6c757d; }
+
 block content
-  h1= message
-  h2= error.status
-  pre #{error.stack}
+  .page-container
+    .error-page-container
+      h2.error-status= error.status || 'Erro'
+      h1.error-message= message
+      if process.env.NODE_ENV === 'development' && error.stack
+        pre.error-stack #{error.stack}

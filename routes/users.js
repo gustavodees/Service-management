@@ -19,7 +19,7 @@ router.get('/', verificaAutenticacao, function(req, res, next) {
 /* GET Desparo de mensagens page. */
 router.get('/desparar', verificaAutenticacao, function(req, res, next) {
   res.render('desparaWhats', { 
-    title: 'Disparo de Mensagens - Sistema Malty',
+    title: 'Disparo de Mensagens - Sistema Service',
     usuarioTipo: req.session.usuario ? req.session.usuario.tipo : null
   });
 });
@@ -190,7 +190,7 @@ router.get('/atendimento', verificaAutenticacao, function(req, res, next) {
     delete req.session.impersonateUserId;
   }
   res.render('atendimento', { 
-    title: 'Atendimento - Sistema Malty',
+    title: 'Atendimento - Sistema Service',
     usuarioTipo: req.session.usuario ? req.session.usuario.tipo : null
   });
 });
@@ -232,7 +232,7 @@ router.get('/tabulacao', verificaAutenticacao, function(req, res, next) {
     delete req.session.impersonateUserId;
   }
   res.render('tabulacao', { 
-    title: 'Tabulação de Mensagens - Sistema Malty',
+    title: 'Tabulação de Mensagens - Sistema Service',
     usuarioTipo: req.session.usuario ? req.session.usuario.tipo : null
   });
 });

@@ -1,79 +1,196 @@
 extends layout
 
+block head
+  link(rel="stylesheet", href="/stylesheets/dashboard.css") // Garante que o estilo do painel seja carregado
+  script(src="/javascripts/dashboard.js" defer) // Garante que o menu recolhível funcione
+
 block content
   include header
-  .chatbot-container
-    h1.page-title 
-      i.fa-solid.fa-robot.title-icon
-      | Robô de Automação WhatsApp
-    
-    .connection-status
-      h3 Status da Conexão
-      .status-indicator(class="disconnected")
-        span#status-text Aguardando conexão...
+  .page-container
+    .page-header
+      div
+        h1.page-title Conexões Robô
+        p.page-subtitle Gerencie os bots de atendimento conectados da sua empresa.
+      button.btn.btn-primary(id="add-new-device-btn")
+        i.fas.fa-plus.mr-2
+        | Adicionar Dispositivo
 
-    .qrcode-section
-      h3 Escaneie o QR Code para ativar o Bot
-      .qrcode-container
-        #qrcode-placeholder
-          p Aguardando geração do QR Code...
-    
-    .bot-controls
-      button.action-button.connect-button#connect-btn
-        i.fa-solid.fa-link
-        | Conectar Bot
-      
-      button.action-button.disconnect-button#disconnect-btn
-        i.fa-solid.fa-power-off
-        | Desconectar
-  
-  // estilos para indicador (mesmo comportamento do WhatsApp)
-  style.
-    .connection-status { text-align: center; margin-bottom: 18px; }
-    .qrcode-container { text-align: center; margin-top: 12px; }
+    if error
+      .alert.alert-danger= error
 
-    .status-indicator {
-      display: inline-block;
-      padding: 10px 22px;
-      border-radius: 999px;
-      font-weight: 700;
-      white-space: nowrap;
-      box-shadow: 0 8px 20px rgba(0,0,0,0.12);
-      transition: background .22s ease, color .22s ease, transform .12s ease;
-      vertical-align: middle;
-      text-align: center;
-    }
-    .status-indicator.connected { background: linear-gradient(90deg,#29d17b,#0ea85a); color: #002800; }
-    .status-indicator.connecting { background: linear-gradient(90deg,#ffec99,#ffd24d); color: #2b2b00; }
-    .status-indicator.error { background: linear-gradient(90deg,#ff8a80,#e53935); color: #fff; }
-    .status-indicator.disconnected { background: linear-gradient(90deg,#d0d6da,#bfc7cc); color:#1b1b1b; }
+    if devices.length === 0
+      .empty-state
+        i.fas.fa-robot.empty-icon
+        h3 Nenhum bot encontrado
+        p Clique em "Adicionar Dispositivo" para conectar seu primeiro bot.
+    else
+      // Layout em cards, similar ao conectZap.pug
+      .device-grid
+        each device in devices
+          .device-card(data-device-id=device.deviceIDchatbot)
+            .card-header
+              .device-info
+                i.fas.fa-robot.device-icon
+                .device-details
+                  h5.device-name= device.number || 'Novo Dispositivo'
+                  span.device-id= device.deviceIDchatbot
+              -
+                let statusClass = 'disconnected';
+                let statusText = 'Desconhecido';
+                if (device.status === 'connected') { statusClass = 'connected'; statusText = 'Conectado'; }
+                else if (device.status === 'connecting') { statusClass = 'connecting'; statusText = 'Conectando'; }
+                else if (device.status === 'disconnected') { statusClass = 'disconnected'; statusText = 'Desconectado'; }
+              .status-badge(class=statusClass)
+                .status-dot
+                span= statusText
+            .card-body
+              .info-item
+                span Última Conexão
+                strong= device.last_connected ? new Date(device.last_connected).toLocaleString('pt-BR') : 'Nunca'
+            .card-footer
+              if device.status !== 'connected'
+                button.btn.btn-sm.btn-success.connect-btn(data-device-id=device.deviceIDchatbot)
+                  i.fas.fa-play.mr-1
+                  | Conectar
+              if device.status === 'connected'
+                button.btn.btn-sm.btn-warning.disconnect-btn(data-device-id=device.deviceIDchatbot)
+                  i.fas.fa-stop.mr-1
+                  | Desconectar
+              button.btn.btn-sm.btn-danger.remove-btn(data-device-id=device.deviceIDchatbot)
+                i.fas.fa-trash.mr-1
+                | Remover
 
+    // Modal para exibir o QR Code
+    #qrModal.modal(tabindex="-1")
+      .modal-dialog.modal-dialog-centered
+        .modal-content
+          .modal-header
+            h5.modal-title Escaneie para Conectar o Bot
+            button.close(type="button", data-dismiss="modal")
+              span &times;
+          .modal-body.text-center
+            #qrcode-container
+              p Aguardando QR Code...
+
+  // Scripts para interatividade da página
   script.
     document.addEventListener('DOMContentLoaded', function() {
-      const statusText = document.getElementById('status-text');
-      const statusIndicator = document.querySelector('.status-indicator');
-      const qrcodePlaceholder = document.getElementById('qrcode-placeholder');
-      const connectBtn = document.getElementById('connect-btn');
-      const disconnectBtn = document.getElementById('disconnect-btn');
+      const qrModal = $('#qrModal');
+      const qrContainer = document.getElementById('qrcode-container');
+      let qrCheckInterval = null;
 
-      function setStatus(state, text) {
-        if (!statusIndicator) return;
-        statusIndicator.classList.remove('connected','connecting','error','disconnected');
-        statusIndicator.classList.add(state || 'disconnected');
-        if (statusText && typeof text === 'string') statusText.textContent = text;
-      }
+      // Adicionar novo dispositivo
+      document.getElementById('add-new-device-btn').addEventListener('click', async () => {
+        try {
+          const response = await fetch('/chatbot/add-device', { method: 'POST' });
+          const data = await response.json();
+          if (data.success) {
+            window.location.reload();
+          } else {
+            alert('Erro ao adicionar dispositivo: ' + (data.message || 'Tente novamente.'));
+          }
+        } catch (error) {
+          console.error('Erro ao adicionar dispositivo:', error);
+          alert('Ocorreu um erro de comunicação.');
+        }
+      });
 
-      // substitua as atribuições diretas de .className / .textContent por setStatus(...)
-      // Exemplo: no onopen -> setStatus('connecting', 'WebSocket conectado, iniciando bot...')
-      // no caso 'ready' -> setStatus('connected','ChatBot WhatsApp conectado!')
-      // no caso 'qr' -> setStatus('connecting','Gerando QR Code — escaneie com o app')
-      // no caso de erro/disconnect -> setStatus('error', '...') ou setStatus('disconnected','...')
-      
-      let ws = null;
-      let reconnectAttempts = 0;
-      const maxReconnectAttempts = 5;
-      
-      function connectWebSocket() {
+      // Conectar dispositivo
+      document.querySelectorAll('.connect-btn').forEach(button => {
+        button.addEventListener('click', function() {
+          const deviceId = this.getAttribute('data-device-id');
+          qrContainer.innerHTML = '<p>Aguardando QR Code...</p>';
+          qrModal.modal('show');
+
+          if (qrCheckInterval) clearInterval(qrCheckInterval);
+
+          const fetchQRCode = async () => {
+            try {
+              const response = await fetch(`/chatbot/qrcode/${deviceId}`);
+              const data = await response.json();
+
+              if (data.isReady) {
+                qrModal.modal('hide');
+                clearInterval(qrCheckInterval);
+                window.location.reload();
+                return;
+              }
+
+              if (data.qr) {
+                qrContainer.innerHTML = `<img src="${data.qr}" alt="QR Code" style="max-width:240px; height:auto; border-radius:8px;">`;
+              } else {
+                qrContainer.innerHTML = '<p>Aguardando geração do QR Code...</p>';
+              }
+            } catch (error) {
+              console.error('Erro ao buscar QR Code:', error);
+              qrContainer.innerHTML = '<p style="color: red;">Erro ao carregar QR Code.</p>';
+              clearInterval(qrCheckInterval);
+            }
+          };
+
+          fetchQRCode();
+          qrCheckInterval = setInterval(fetchQRCode, 3000);
+        });
+      });
+
+      // Desconectar dispositivo
+      document.querySelectorAll('.disconnect-btn').forEach(button => {
+        button.addEventListener('click', async function() {
+          const deviceId = this.getAttribute('data-device-id');
+          if (!confirm(`Tem certeza que deseja desconectar o bot ${deviceId}?`)) return;
+
+          try {
+            const response = await fetch(`/chatbot/disconnect/${deviceId}`, { method: 'POST' });
+            const data = await response.json();
+            if (data.success) {
+              window.location.reload();
+            } else {
+              alert('Erro ao desconectar: ' + (data.message || 'Tente novamente.'));
+            }
+          } catch (error) {
+            console.error('Erro ao desconectar:', error);
+            alert('Ocorreu um erro de comunicação.');
+          }
+        });
+      });
+
+      // Remover dispositivo
+      document.querySelectorAll('.remove-btn').forEach(button => {
+        button.addEventListener('click', async function() {
+          const deviceId = this.getAttribute('data-device-id');
+          if (!confirm(`ATENÇÃO: Isso removerá o bot ${deviceId} permanentemente. Deseja continuar?`)) return;
+
+          try {
+            const response = await fetch(`/chatbot/remove-device/${deviceId}`, { method: 'POST' });
+            const data = await response.json();
+            if (data.success) {
+              window.location.reload();
+            } else {
+              alert('Erro ao remover: ' + (data.message || 'Tente novamente.'));
+            }
+          } catch (error) {
+            console.error('Erro ao remover:', error);
+            alert('Ocorreu um erro de comunicação.');
+          }
+        });
+      });
+
+      // Limpar intervalo quando o modal for fechado
+      qrModal.on('hidden.bs.modal', function() {
+        if (qrCheckInterval) clearInterval(qrCheckInterval);
+        qrContainer.innerHTML = '';
+      });
+    });
+
+```
+
+### 2. Ajuste na Rota Principal (`app.js`)
+
+Para que a nova página funcione, ajustei a rota `/conectBot` em `app.js` para renderizar o arquivo `chatbot.pug` (em vez de `conectBot.pug`), passando os dispositivos corretos para a view.
+
+```diff
+--- a/c/Service-management/app.js
++++ b/c/Service-management/app.js
         try {
           // Conectar ao WebSocket na mesma porta do servidor
           ws = new WebSocket(`ws://${window.location.hostname}:${window.location.port}/ws-chatbot`);

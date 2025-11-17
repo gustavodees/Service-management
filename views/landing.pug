@@ -1,0 +1,94 @@
+doctype html
+html(lang="pt-BR")
+  head
+    meta(charset="UTF-8")
+    meta(name="viewport", content="width=device-width, initial-scale=1.0")
+    title= title
+    link(rel="stylesheet", href="/stylesheets/landing.css")
+    link(href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap", rel="stylesheet")
+    link(rel="stylesheet", href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css")
+
+  body
+    header.main-header
+      .container
+        h1.logo Service-management
+        nav
+          a(href="/login", class="btn btn-login") Login
+
+    main
+      section.hero
+        .container
+          h2 Transforme seu Atendimento ao Cliente
+          p Uma plataforma completa para gestão de atendimento. Otimize a comunicação, automatize conversas com chatbots inteligentes e gerencie múltiplos canais de WhatsApp de forma centralizada.
+          a(href="/cadastro-empresa", class="btn btn-primary") Comece Agora Gratuitamente
+
+      section.features
+        .container
+          .feature-item
+            i.fas.fa-comments
+            h3 Atendimento Centralizado
+            p Gerencie todas as suas conversas de WhatsApp em um único painel, com múltiplos atendentes.
+          .feature-item
+            i.fas.fa-robot
+            h3 Automação com Chatbot
+            p Crie fluxos de conversa inteligentes para qualificar leads e resolver dúvidas 24/7.
+          .feature-item
+            i.fas.fa-user-shield
+            h3 Supervisão de Equipe
+            p Como admin, visualize e acompanhe os atendimentos de toda a sua equipe em tempo real.
+          .feature-item
+            i.fas.fa-chart-pie
+            h3 Análise com Gráficos
+            p Visualize o desempenho das suas tabulações com gráficos intuitivos e tome decisões baseadas em dados.
+
+      section#como-funciona.how-it-works
+        .container
+          h2 Como Funciona?
+          .steps
+            .step
+              .step-number 1
+              h3 Cadastre-se
+              p Crie a conta da sua empresa. Após uma rápida aprovação, você terá acesso total à plataforma.
+            .step
+              .step-number 2
+              h3 Conecte seu WhatsApp
+              p Integre seus números de WhatsApp e chatbot em poucos cliques e centralize seus canais.
+            .step
+              .step-number 3
+              h3 Comece a Atender
+              p Organize seus chats, tabule conversas e monitore o desempenho da sua equipe em tempo real.
+
+      section#funcionalidades.detailed-features
+        .container
+          h2 Ferramentas Poderosas para sua Gestão
+          .feature-card
+            .feature-icon
+              i.fas.fa-brain
+            .feature-content
+              h3 Inteligência Artificial Personalizável
+              p Treine seu próprio chatbot com uma IA que aprende com seus documentos. Defina o tom de voz, as respostas e o fluxo de atendimento para automatizar conversas com a cara da sua empresa.
+          .feature-card.reverse
+            .feature-icon
+              i.fas.fa-tags
+            .feature-content
+              h3 Organize seu Funil com Tabulações
+              p Crie status como "Negócio Fechado", "Sem Interesse" ou "Aniversariante" e aplique a cada conversa. Tenha uma visão clara do seu funil de vendas e do status de cada cliente, diretamente no painel.
+
+      section.cta
+        .container
+          h2 Pronto para Elevar seu Atendimento?
+          p Junte-se a nós e descubra como a gestão centralizada pode impulsionar seus resultados.
+          a(href="/cadastro-empresa", class="btn btn-primary") Cadastrar Minha Empresa
+
+    footer
+      .container
+        .footer-content
+          div
+            h3 Service-management
+            p Transformando o atendimento ao cliente.
+          .contact-info
+            h4 Contate-nos
+            p Email: contato@servicemanagement.com
+            p Telefone: (XX) XXXX-XXXX
+        .footer-bottom
+          p &copy; #{new Date().getFullYear()} Service-management. Todos os direitos reservados.

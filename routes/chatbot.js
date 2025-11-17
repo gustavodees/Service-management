@@ -1108,7 +1108,7 @@ async function fetchAndSaveChatbotMessagesIfNeeded(deviceIDchatbot, chatId, minM
 // Rotas principais
 
 router.get('/', (req, res) => {
-  res.render('chatbot', { title: 'Chatbot Malty - Sistema Malty' });
+  res.render('chatbot', { title: 'Chatbot Service - Sistema Service' });
 });
 
 router.post('/create-connection', async (req, res) => {

@@ -1,0 +1,176 @@
+.sidebar-menu {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 70px; /* Largura inicial (recolhido) */
+  height: 100vh;
+  background-color: #1f2937;
+  z-index: 1020; /* Aumentado para garantir que fique sobre outros elementos */
+  box-shadow: 4px 0 10px rgba(0,0,0,0.15); /* Sombra mais pronunciada */
+  transition: width 0.3s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-menu:hover {
+  width: 250px; /* Largura ao passar o mouse (expandido) */
+}
+
+.sidebar-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.logo-container {
+  padding: 1rem 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-shrink: 0; /* Impede que o logo encolha */
+}
+
+.logo-container img {
+  width: 40px; /* Tamanho do logo */
+  height: 40px;
+  transition: all 0.3s ease;
+}
+
+.company-context {
+  text-align: center;
+  padding: 0 10px 20px 10px;
+  color: #9ca3af;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.sidebar-menu:hover .company-context {
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0.1s;
+}
+
+.sidebar-nav {
+  width: 100%;
+  flex-grow: 1;
+}
+
+.nav-icons {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.nav-item {
+  width: 100%;
+}
+
+.nav-item a {
+  display: flex;
+  align-items: center;
+  height: 50px;
+  color: #d1d5db; /* Cor do texto e ícone */
+  text-decoration: none;
+  position: relative;
+  transition: background-color 0.2s ease;
+  padding: 0 22.5px; /* Centraliza o ícone quando recolhido (70 - 25) / 2 */
+  box-sizing: border-box;
+}
+
+.nav-text {
+  opacity: 0;
+  visibility: hidden;
+  margin-left: 18px; /* Aumentado para dar mais espaço entre ícone e texto */
+  font-size: 16px;
+  white-space: nowrap;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+  display: inline-block; /* Garante que o span não quebre a linha */
+}
+
+.sidebar-menu:hover .nav-item a {
+  justify-content: flex-start;
+  padding: 0 25px; /* Padding quando expandido */
+}
+
+.sidebar-menu:hover .nav-text {
+  opacity: 1; 
+  visibility: visible;
+  transition-delay: 0.1s; /* Pequeno delay para aparecer */
+}
+
+.nav-item a:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Estilo para o item de menu ativo */
+.nav-item.active a {
+  background-color: rgba(59, 130, 246, 0.1); /* Fundo azul sutil usando a cor primária */
+  color: #fff; /* Garante que o texto permaneça branco e legível */
+  position: relative;
+}
+
+/* Efeito de hover para o item ativo (um pouco mais intenso) */
+.nav-item.active a:hover {
+  background-color: rgba(59, 130, 246, 0.15);
+}
+
+.icon {
+  font-size: 20px; /* Tamanho ajustado */
+  color: #d1d5db;
+  transition: color 0.2s ease, transform 0.2s ease;
+  min-width: 25px; /* Aumenta a largura mínima para melhor alinhamento */
+  text-align: center;
+  display: inline-block; /* Garante que o ícone seja tratado como um bloco */
+  opacity: 1; /* Garante que o ícone esteja sempre visível */
+  visibility: visible; /* Garante que o ícone esteja sempre visível */
+}
+
+.nav-item a:hover .icon, .nav-item.active a .icon {
+  color: var(--primary-color, #3b82f6);
+  transform: scale(1.1);
+}
+
+
+.sidebar-footer {
+  margin-top: auto;
+  width: 100%;
+}
+
+/* --- Estilos do Tooltip --- */
+
+/* Oculta o tooltip quando o menu está expandido */
+.sidebar-menu:hover .nav-item a::after {
+  display: none;
+}
+
+/* Estilo base do tooltip (usando o atributo 'title' do link) */
+.nav-item a::after {
+  content: attr(title);
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: 15px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  background-color: #111827; /* Cor de fundo escura */
+  color: #fff; /* Texto branco */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  white-space: nowrap;
+  z-index: 1030; /* Acima do menu */
+  
+  /* Escondido por padrão */
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+/* Mostra o tooltip ao passar o mouse sobre o item (apenas no menu recolhido) */
+.nav-item a:hover::after {
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0.2s; /* Pequeno atraso para exibir */
+}

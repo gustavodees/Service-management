@@ -1,40 +1,42 @@
 extends layout
 
+block head
+  link(rel="stylesheet", href="/stylesheets/dashboard.css")
+
 block content
   include header
-  .cadastro-centraliza
-    .cadastro-container
-      if success
-        .alert.alert-success
-          | #{success}
+  .page-container
+    .page-header
+      div
+        h1.page-title Cadastro de Usuário
+        p.page-subtitle Preencha os dados para criar um novo acesso.
+
+    //- Centraliza o card de conteúdo
+    .content-card(style="max-width: 600px; margin: 0 auto;")
       if error
-        .alert.alert-danger
-          | #{error}
-      h1.page-title
-        i.fa-solid.fa-user-plus.title-icon
-        | Cadastro de Usuário
+        .alert.alert-danger= error
+      if success
+        .alert.alert-success= success
 
-      form#cadastro-form(action="/cadastro" method="POST")
+      form(method="POST", action="/cadastro")
         .form-group
-          label(for="nome") Nome:
-          input#nome(type="text" name="nome" required placeholder="Digite o nome completo")
+          label(for="nome") Nome Completo
+          input.form-control(type="text", id="nome", name="nome", placeholder="Ex: João da Silva", required)
 
         .form-group
-          label(for="email") E-mail:
-          input#email(type="email" name="email" required placeholder="Digite o e-mail")
+          label(for="email") Email
+          input.form-control(type="email", id="email", name="email", placeholder="Ex: joao.silva@email.com", required)
 
         .form-group
-          label(for="senha") Senha:
-          input#senha(type="password" name="senha" required placeholder="Digite a senha" minlength="8")
+          label(for="senha") Senha
+          input.form-control(type="password", id="senha", name="senha", placeholder="Mínimo 8 caracteres", required)
 
         .form-group
-          label(for="tipo") Tipo de Usuário:
-          select#tipo(name="tipo" required)
-            option(value="" disabled selected) Selecione o tipo...
+          label(for="tipo") Tipo de Usuário
+          select.form-control(id="tipo", name="tipo", required)
+            option(value="funcionario", selected) Funcionário
             option(value="admin") Administrador
-            option(value="funcionario") Funcionário
 
-        button.btn-cadastrar(type="submit") Cadastrar
-
-
-    
+        .form-actions
+          button.btn.btn-primary(type="submit") Cadastrar Usuário
+          a.btn.btn-secondary(href="/usuariocadastrado") Voltar

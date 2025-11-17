@@ -1,7 +1,7 @@
 const { DataTypes } = require('sequelize');
 const sequelizeUser = require('./banco');
 
-const Usuario = sequelizeUser.define('usuarios', {
+const Usuario = sequelizeUser.define('Usuario', {
     id: {
         type: DataTypes.INTEGER,
         autoIncrement: true,
@@ -25,6 +25,12 @@ const Usuario = sequelizeUser.define('usuarios', {
         allowNull: false,
         defaultValue: 'funcionario'
     },
+    empresa_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true, // Permite nulo para o admin host
+        references: { model: 'empresas', key: 'id' },
+        onDelete: 'CASCADE'
+    },
     created_at: {
         type: DataTypes.DATE,
         allowNull: false,
@@ -32,13 +38,11 @@ const Usuario = sequelizeUser.define('usuarios', {
     },
     wwp_connected: {
         type: DataTypes.STRING,
-        allowNull: true // Pode ser null se o usuário ainda não conectou
+        allowNull: true
     }
 }, {
     tableName: 'usuarios',
     timestamps: false
 });
-
-//Usuario.sync({ alter: true }); // Descomente esta linha para atualizar a tabela
 
 module.exports = Usuario;

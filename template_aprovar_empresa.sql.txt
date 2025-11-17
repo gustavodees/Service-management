@@ -1,0 +1,28 @@
+-- =====================================================================
+-- TEMPLATE SQL PARA APROVAR O ACESSO DE UMA EMPRESA
+-- =====================================================================
+--
+-- Instruções:
+-- 1. Substitua o valor do CNPJ de exemplo abaixo pelo CNPJ da empresa
+--    que você deseja aprovar.
+-- 2. Execute este script no seu banco de dados.
+--
+-- O script irá encontrar a empresa pelo CNPJ e alterar seu status
+-- para 'aprovado', permitindo que ela acesse o sistema.
+--
+-- =====================================================================
+
+START TRANSACTION;
+
+-- Defina aqui o CNPJ da empresa que será aprovada
+SET @cnpj_para_aprovar = '00.000.000/0001-91'; -- <-- Substitua pelo CNPJ real
+
+-- Atualiza o status da empresa para 2 (aprovado)
+UPDATE empresas
+SET 
+    status = 2
+WHERE 
+    -- A cláusula COLLATE garante que a comparação funcione mesmo se a collation da conexão for diferente da coluna.
+    cnpj = @cnpj_para_aprovar COLLATE utf8mb4_unicode_ci;
+
+COMMIT;

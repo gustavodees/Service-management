@@ -358,6 +358,7 @@ function connectWhatsappWebSocket() {
 
   wsWhatsapp.onopen = async function () {
     console.log('WebSocket WhatsApp conectado');
+    // Solicita os contatos de todos os dispositivos já conectados ao carregar a página
     wsWhatsapp.send(JSON.stringify({ type: 'get-all-contacts' }));
     await updateCombinedConversations();
   };
@@ -368,14 +369,31 @@ function connectWhatsappWebSocket() {
 
     switch (data.type) {
       case 'all-whatsapp-contacts':
-      case 'all-contacts': {
-        console.log('Todos os contatos WhatsApp recebidos:', data.contacts);
-        const incoming = (data.contacts || []).map(c => ({ ...c, isGroup: normalizeIsGroup(c) }));
-        // Mescla sem perder grupos já existentes
-        allWhatsappContacts = mergeWhatsappContacts(allWhatsappContacts, incoming);
-        await updateCombinedConversations(allWhatsappContacts);
+        // Este evento é acionado tanto na conexão inicial quanto quando um novo dispositivo se conecta
+        if (data.contacts) {
+            console.log(`Recebidos ${data.contacts.length} contatos do dispositivo ${data.deviceId}`);
+            
+            // Adiciona ou atualiza os contatos na lista global
+            const incomingContacts = data.contacts.map(c => ({
+                ...c,
+                source: 'whatsapp',
+                deviceId: data.deviceId,
+                isGroup: c.isGroup || (c.id && c.id.endsWith('@g.us'))
+            }));
+
+            // Mescla com a lista existente para evitar duplicatas e manter o estado
+            const existingContacts = window.ultimaListaConversas || [];
+            const map = new Map();
+            existingContacts.forEach(c => map.set(c.id, c));
+            incomingContacts.forEach(c => map.set(c.id, c));
+
+            window.ultimaListaConversas = Array.from(map.values());
+            
+            // Salva no localStorage e renderiza a lista
+            localStorage.setItem('ultimaListaConversas', JSON.stringify(window.ultimaListaConversas));
+            renderConversas(window.ultimaListaConversas);
+        }
         break;
-      }
 
       case 'whatsapp-contacts-updated': {
         console.log('Contatos WhatsApp atualizados:', data.allContacts);

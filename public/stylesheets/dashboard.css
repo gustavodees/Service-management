@@ -1,0 +1,144 @@
+/* Estilo geral para páginas de dashboard */
+body {
+  font-family: 'Poppins', sans-serif;
+  background-color: #f4f7f6;
+  color: #333;
+  margin: 0;
+}
+
+.dashboard-container {
+  padding: 20px 40px;
+  max-width: 1200px;
+  margin: 20px auto;
+}
+
+/* Cabeçalho da página */
+.dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.dashboard-header h1 {
+  font-size: 2rem;
+  font-weight: 600;
+  color: #128C7E;
+  margin: 0;
+}
+
+.btn-primary {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  background-color: #128C7E;
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.3s ease;
+}
+
+.btn-primary:hover {
+  background-color: #075E54;
+  transform: translateY(-2px);
+}
+
+/* Estilo da Tabela */
+.content-box {
+  background-color: #fff;
+  padding: 30px;
+  border-radius: 15px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+}
+
+.styled-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.styled-table thead tr {
+  background-color: #f8f9fa;
+  color: #333;
+  text-align: left;
+  font-weight: 600;
+}
+
+.styled-table th,
+.styled-table td {
+  padding: 15px 20px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.styled-table tbody tr:last-of-type {
+  border-bottom: none;
+}
+
+.styled-table tbody tr:hover {
+  background-color: #f5f5f5;
+}
+
+/* Estilo para o tipo de usuário (admin/funcionario) */
+.user-type {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  display: inline-block;
+}
+
+.user-type.admin {
+  background-color: rgba(255, 193, 7, 0.2); /* Amarelo claro */
+  color: #b8860b; /* Amarelo escuro */
+}
+
+.user-type.funcionario {
+  background-color: rgba(23, 162, 184, 0.2); /* Azul claro */
+  color: #17a2b8; /* Azul */
+}
+
+/* Botões de Ação na Tabela */
+.action-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-action {
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.btn-delete {
+  background-color: #e74c3c;
+  color: white;
+}
+
+.btn-delete:hover {
+  background-color: #c0392b;
+}
+
+/* Alertas */
+.alert {
+  padding: 15px;
+  margin-bottom: 20px;
+  border-radius: 5px;
+  color: #fff;
+}
+
+.alert-danger {
+  background-color: #e74c3c;
+}
+
+.alert-success {
+  background-color: #2ecc71;
+}

@@ -34,7 +34,12 @@ const ChatbotDevice = sequelizeUser.define('chatbot_devices', {
     user_id: {
         type: DataTypes.INTEGER,
         allowNull: false // cada device deve pertencer a um usuário (igual ao whatsappDevice)
-    }
+    },
+    empresa_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true, // Permitir nulo para o admin host, se aplicável
+        references: { model: 'empresas', key: 'id' }
+    },
 }, {
     tableName: 'chatbot_devices',
     timestamps: false
