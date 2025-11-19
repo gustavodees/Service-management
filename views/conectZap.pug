@@ -48,29 +48,32 @@ block content
               .info-item
                 span Última Conexão
                 strong= device.last_connected ? new Date(device.last_connected).toLocaleString('pt-BR') : 'Nunca'
+
+            //- Adicionado: Seção da barra de progresso (escondida por padrão)
+            .card-progress(id=`progress-container-${device.device_id}` style="display: none;")
+              .progress-info
+                span.progress-label Sincronizando...
+                span.progress-percentage(id=`progress-text-${device.device_id}`) 0%
+              .progress-bar
+                .progress-bar-fill(id=`progress-bar-${device.device_id}`)
+
             .card-footer
               if device.status !== 'connected'
                 button.btn.btn-success.connect-btn(data-device-id=device.device_id, style="width: 100%;")
                   i.fas.fa-play.mr-1
                   | Conectar
               else
+                //- Adicionado: Botão para iniciar a sincronização
+                button.btn-icon-action.sync-btn(data-device-id=device.device_id, title="Sincronizar Contatos e Mensagens")
+                  i.fas.fa-sync-alt
+
                 // Botões de ícone para ações secundárias
                 button.btn-icon-action.disconnect-btn(data-device-id=device.device_id, title="Desconectar")
                   i.fas.fa-power-off
                 button.btn-icon-action.danger.remove-btn(data-device-id=device.device_id, title="Remover")
                   i.fas.fa-trash
 
-    // Modal para exibir o QR Code
-    #qrModal.modal.fade(tabindex="-1")
-      .modal-dialog.modal-dialog-centered
-        .modal-content
-          .modal-header
-            h5.modal-title Escaneie para Conectar
-            button.close(type="button", data-dismiss="modal")
-              span &times;
-          .modal-body.text-center
-            #qrcode-container
-              p Aguardando QR Code...
+  
 
     //- Adicionado: Script para fazer o botão de adicionar dispositivo funcionar
     script.
@@ -129,6 +132,96 @@ block content
               } catch (error) {
                 alert('Erro de comunicação ao tentar desconectar o dispositivo.');
               }
+            }
+          });
+        });
+
+        // Adicionado: Lógica para o botão de sincronizar
+        document.querySelectorAll('.sync-btn').forEach(button => {
+          button.addEventListener('click', async (event) => {
+            const deviceId = event.target.closest('button').dataset.deviceId;
+            if (!confirm(`Iniciar a sincronização de contatos e mensagens para o dispositivo ${deviceId}?`)) {
+              return;
+            }
+
+            const progressContainer = document.getElementById(`progress-container-${deviceId}`);
+            const progressBar = document.getElementById(`progress-bar-${deviceId}`);
+            const progressText = document.getElementById(`progress-text-${deviceId}`);
+
+            progressContainer.style.display = 'block';
+            progressBar.style.width = '0%';
+            progressText.textContent = '0%';
+
+            try {
+              // 1. Inicia o processo no backend e obtém um ID da tarefa
+              const startResponse = await fetch(`/whatsapp/start-sync/${deviceId}`, { method: 'POST' });
+              const { taskId } = await startResponse.json();
+
+              // 2. Verifica o progresso periodicamente
+              const intervalId = setInterval(async () => {
+                const statusResponse = await fetch(`/whatsapp/sync-status/${taskId}`);
+                const { progress, message } = await statusResponse.json();
+
+                // 3. Atualiza a UI
+                progressBar.style.width = progress + '%';
+                progressText.textContent = progress + '%';
+
+                if (progress >= 100) {
+                  clearInterval(intervalId);
+                  progressText.textContent = "Concluído!";
+                  // Opcional: esconder a barra após um tempo
+                  setTimeout(() => { progressContainer.style.display = 'none'; alert('Sincronização concluída! Os contatos já devem aparecer na aba de Atendimento.'); }, 2000);
+                }
+              }, 3000); // Verifica a cada 3 segundos
+            } catch (error) {
+              console.error('Erro ao iniciar sincronização:', error);
+              alert('Não foi possível iniciar a sincronização. Verifique o console para mais detalhes.');
+              progressContainer.style.display = 'none';
+            }
+          });
+        });
+
+        // Adicionado: Lógica para o botão de sincronizar
+        document.querySelectorAll('.sync-btn').forEach(button => {
+          button.addEventListener('click', async (event) => {
+            const deviceId = event.target.closest('button').dataset.deviceId;
+            if (!confirm(`Iniciar a sincronização de contatos e mensagens para o dispositivo ${deviceId}?`)) {
+              return;
+            }
+
+            const progressContainer = document.getElementById(`progress-container-${deviceId}`);
+            const progressBar = document.getElementById(`progress-bar-${deviceId}`);
+            const progressText = document.getElementById(`progress-text-${deviceId}`);
+
+            progressContainer.style.display = 'block';
+            progressBar.style.width = '0%';
+            progressText.textContent = '0%';
+
+            try {
+              // 1. Inicia o processo no backend e obtém um ID da tarefa
+              const startResponse = await fetch(`/whatsapp/start-sync/${deviceId}`, { method: 'POST' });
+              const { taskId } = await startResponse.json();
+
+              // 2. Verifica o progresso periodicamente
+              const intervalId = setInterval(async () => {
+                const statusResponse = await fetch(`/whatsapp/sync-status/${taskId}`);
+                const { progress, message } = await statusResponse.json();
+
+                // 3. Atualiza a UI
+                progressBar.style.width = progress + '%';
+                progressText.textContent = progress + '%';
+
+                if (progress >= 100) {
+                  clearInterval(intervalId);
+                  progressText.textContent = "Concluído!";
+                  // Opcional: esconder a barra após um tempo
+                  setTimeout(() => { progressContainer.style.display = 'none'; alert('Sincronização concluída! Os contatos já devem aparecer na aba de Atendimento.'); }, 2000);
+                }
+              }, 3000); // Verifica a cada 3 segundos
+            } catch (error) {
+              console.error('Erro ao iniciar sincronização:', error);
+              alert('Não foi possível iniciar a sincronização. Verifique o console para mais detalhes.');
+              progressContainer.style.display = 'none';
             }
           });
         });

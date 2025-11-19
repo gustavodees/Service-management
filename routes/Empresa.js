@@ -18,8 +18,11 @@ const Empresa = sequelize.define('Empresa', {
     },
     cnpj: {
         type: DataTypes.STRING,
-        allowNull: true,
-        unique: true
+        allowNull: true, // Permite nulo se a empresa não tiver CNPJ
+        unique: {
+            name: 'cnpj_unique_constraint', // Nome explícito para a restrição
+            msg: 'Este CNPJ já está cadastrado.'
+        }
     },
     status: {
         // Alterado para INTEGER para usar -2, -1, 1, 2

@@ -10,7 +10,10 @@ const WhatsappDevice = sequelizeUser.define('whatsapp_devices', {
     device_id: {
         type: DataTypes.STRING,
         allowNull: false,
-        unique: true
+        unique: {
+            name: 'device_id_unique_constraint', // Nome explícito para a restrição
+            msg: 'Este ID de dispositivo já está em uso.'
+        }
     },
     status: {
         type: DataTypes.STRING,

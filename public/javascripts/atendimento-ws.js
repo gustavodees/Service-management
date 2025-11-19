@@ -21,6 +21,11 @@ let audioChunks = [];
 let recordingTimer = null;
 let recordingStartTime = null;
 let isRecording = false;
+// Variáveis para paginação do histórico
+let currentPage = 1;
+let isLoadingHistory = false;
+let hasMoreHistory = true;
+
 let shouldSendRecording = false;
 
 // Typing indicator timer: sends "typing-stop" after user idle time
@@ -674,8 +679,11 @@ function connectWhatsappWebSocket() {
 // Função para atualizar lista combinada de conversas
 async function updateCombinedConversations(whatsappChats = null) {
   try {
+    // Busca os chats já transferidos do chatbot
     const chatbotChats = await fetchChatbotTransferredChats();
-    let whatsappChatList = whatsappChats || allWhatsappContacts || [];
+    // CORREÇÃO: Usa a lista de conversas já carregada (window.ultimaListaConversas) como base,
+    // em vez de começar com uma lista vazia. Isso evita que os contatos iniciais desapareçam.
+    let whatsappChatList = whatsappChats || window.ultimaListaConversas || allWhatsappContacts || [];
 
     console.log('Atualizando conversas:', {
       chatbotChats: chatbotChats.length,
@@ -747,42 +755,32 @@ async function handleWhatsappMessage(data) {
     window.ultimaListaConversas = [];
   }
 
-  // Detecta grupo pelo chatId
-  const isGroup = data.chatId && data.chatId.endsWith('@g.us');
-
   if (!data.message || (!data.message.body && !data.message.type && !data.message.data)) {
     console.log('Mensagem vazia recebida do WhatsApp, ignorando...');
     return;
   }
 
-  let chatObj = window.ultimaListaConversas.find(c => c.id === data.chatId);
+  const chatId = data.chatId;
+  const isGroup = chatId && chatId.endsWith('@g.us');
+  let chatIndex = window.ultimaListaConversas.findIndex(c => c.id === chatId);
+  let chatObj;
 
   let lastMessageText = data.message.body;
   if (!lastMessageText) {
     switch (data.message.type) {
-      case 'ptt':
-      case 'audio':
-        lastMessageText = '[Áudio]';
-        break;
-      case 'image':
-        lastMessageText = '[Imagem]';
-        break;
-      case 'video':
-        lastMessageText = '[Vídeo]';
-        break;
-      case 'document':
-        lastMessageText = `[Documento] ${data.message.filename || ''}`;
-        break;
-      default:
-        lastMessageText = '[Mídia]';
+      case 'ptt': case 'audio': lastMessageText = '[Áudio]'; break;
+      case 'image': lastMessageText = '[Imagem]'; break;
+      case 'video': lastMessageText = '[Vídeo]'; break;
+      case 'document': lastMessageText = `[Documento] ${data.message.filename || ''}`; break;
+      default: lastMessageText = '[Mídia]';
     }
   }
 
-  if (!chatObj) {
+  if (chatIndex === -1) {
+    // Se o chat não existe, cria um novo objeto
     chatObj = {
-      id: data.chatId,
-      name: data.customerName || (isGroup ? 'Grupo' : data.chatId.replace('@c.us', '')),
-
+      id: chatId,
+      name: data.customerName || (isGroup ? 'Grupo' : chatId.replace('@c.us', '')),
       lastMessage: lastMessageText,
       timestamp: Date.now(),
       history: [],
@@ -793,24 +791,29 @@ async function handleWhatsappMessage(data) {
       isGroup: isGroup,
       deviceId: data.deviceId || currentDeviceId
     };
-    window.ultimaListaConversas.push(chatObj);
+    // Adiciona o novo chat no topo da lista
+    window.ultimaListaConversas.unshift(chatObj);
   } else {
+    // Se o chat já existe, atualiza e move para o topo
+    chatObj = window.ultimaListaConversas[chatIndex];
     chatObj.lastMessage = lastMessageText;
     chatObj.timestamp = Date.now();
     if (!data.message.fromMe) {
       chatObj.unreadCount = (chatObj.unreadCount || 0) + 1;
       chatObj.hasNewMessages = true;
     }
+    // Remove da posição atual e insere no início
+    window.ultimaListaConversas.splice(chatIndex, 1);
+    window.ultimaListaConversas.unshift(chatObj);
   }
 
-  // Ensure contact (including group) is preserved in the consolidated contacts list
+  // Garante que o contato (incluindo grupo) está na lista consolidada
   allWhatsappContacts = mergeWhatsappContacts(allWhatsappContacts, [chatObj]);
 
-  // Para mensagens de áudio recebidas, processar e salvar localmente
+  // Processamento de áudio (lógica existente)
   if ((data.message.type === 'ptt' || data.message.type === 'audio') && data.message.data) {
     try {
-      // Primeiro salvar o áudio e depois atualizar a mensagem com a URL
-      const audioSavePromise = fetch('/whatsapp/save-audio', {
+      fetch('/whatsapp/save-audio', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -820,56 +823,40 @@ async function handleWhatsappMessage(data) {
           timestamp: data.message.timestamp
         })
       })
-        .then(res => res.json())
-        .then(result => {
-          if (result.success && result.audioUrl) {
-            // Atualizar a mensagem com a URL do áudio
-            data.message.audioUrl = result.audioUrl;
-
-            // Atualizar no histórico local
-            updateLocalChatHistory(data.chatId, data.message);
-
-            // Se é o chat selecionado, re-renderizar para mostrar o player
-            if (selectedChatId === data.chatId) {
-              // Buscar e atualizar o elemento específico da mensagem na interface
-              const messageElements = document.querySelectorAll('.message .audio-message');
-              messageElements.forEach(audioEl => {
-                const messageIdMatch = audioEl.dataset.messageId === data.message.id;
-                const hasNoPlayer = !audioEl.querySelector('audio');
-
-                if (hasNoPlayer || messageIdMatch) {
-                  // Substituir com player de áudio
-                  audioEl.innerHTML = `
-                  <audio controls style="max-width: 300px;">
-                    <source src="${result.audioUrl}" type="audio/ogg">
-                    <source src="${result.audioUrl}" type="audio/mpeg">
-                    <source src="${result.audioUrl}" type="audio/wav">
-                    Seu navegador não suporta áudio.
-                  </audio>
-                  <br><small>🎵 Áudio</small>
-                `;
-                }
-              });
-            }
+      .then(res => res.json())
+      .then(result => {
+        if (result.success && result.audioUrl) {
+          data.message.audioUrl = result.audioUrl;
+          updateLocalChatHistory(data.chatId, data.message);
+          if (selectedChatId === data.chatId) {
+            const messageElements = document.querySelectorAll('.message .audio-message');
+            messageElements.forEach(audioEl => {
+              const messageIdMatch = audioEl.dataset.messageId === data.message.id;
+              const hasNoPlayer = !audioEl.querySelector('audio');
+              if (hasNoPlayer || messageIdMatch) {
+                audioEl.innerHTML = `
+                  <audio controls style="max-width: 300px;"><source src="${result.audioUrl}" type="audio/ogg"></audio>
+                  <br><small>🎵 Áudio</small>`;
+              }
+            });
           }
-        });
-
-      // Não esperar a conclusão do salvamento para continuar
-      audioSavePromise.catch(err => console.error('Erro ao salvar áudio:', err));
-
+        }
+      }).catch(err => console.error('Erro ao salvar áudio:', err));
     } catch (error) {
       console.error('Erro ao processar áudio recebido:', error);
     }
   }
 
-  // Atualizar histórico primeiro
+  // Atualiza o histórico e renderiza a lista de conversas atualizada
   updateLocalChatHistory(data.chatId, data.message);
   renderConversations(window.ultimaListaConversas);
 
+  // Se o chat estiver aberto, adiciona a nova mensagem
   if (selectedChatId === data.chatId) {
     appendMessage(data.message);
   }
 
+  // Mostra notificação para mensagens recebidas
   if (!data.message.fromMe && lastMessageText) {
     showNotification(
       `Nova mensagem de ${chatObj.name}`,
@@ -1306,23 +1293,29 @@ function appendMessage(msg) {
 
 // Função para renderizar conteúdo de mídia
 function renderMediaContent(msg) {
-  if (msg.mimetype && (
-    msg.mimetype.startsWith('image/') ||
-    msg.mimetype === 'image/svg+xml'
-  ) && msg.data) {
+  // OTIMIZAÇÃO: Se 'data' (base64) já estiver presente, renderiza diretamente.
+  if (msg.data && msg.mimetype) {
+    if (msg.mimetype.startsWith('image/')) {
     const base64Data = `data:${msg.mimetype};base64,${msg.data}`;
-
-    // Para SVG, adicionar estilo específico
-    const svgStyle = msg.mimetype === 'image/svg+xml' ?
-      'background: white; padding: 20px; border-radius: 8px;' : '';
-
     return `<img src="${base64Data}" 
                  alt="Imagem" 
-                 style="max-width: 300px; max-height: 200px; border-radius: 8px; cursor: pointer; ${svgStyle}" 
+                 style="max-width: 300px; max-height: 200px; border-radius: 8px; cursor: pointer;" 
                  onclick="openImageModal('${base64Data}', '${msg.mimetype}')">`;
-  } else if (msg.mimetype && msg.mimetype.startsWith('video/') && msg.data) {
+    } else if (msg.mimetype.startsWith('video/')) {
     const base64Data = `data:${msg.mimetype};base64,${msg.data}`;
     return `<video controls style="max-width:320px;"><source src="data:${msg.mimetype};base64,${msg.data}" type="${msg.mimetype}"></video>`;
+    }
+    // Outros tipos de mídia com 'data' podem ser adicionados aqui.
+  }
+
+  // OTIMIZAÇÃO: Se 'data' não estiver presente, cria um placeholder clicável para buscar a mídia sob demanda.
+  if (msg.hasMedia && msg.mimetype) {
+    const iconClass = msg.mimetype.startsWith('image/') ? 'fa-image' : (msg.mimetype.startsWith('video/') ? 'fa-video' : 'fa-file');
+    return `<div class="media-placeholder" onclick="fetchMediaAndOpen(this, '${msg.id}', '${selectedChatId}')">
+              <i class="fa-solid ${iconClass}"></i>
+              <span>${msg.filename || 'Clique para ver a mídia'}</span>
+              <small>Carregar</small>
+            </div>`;
   } else if ((msg.mimetype && msg.mimetype.startsWith('audio/')) || msg.type === 'ptt' || msg.type === 'audio' || msg.audioUrl || (msg.body === '[Áudio]')) {
     // Priorizar URL local, depois dados base64
     if (msg.audioUrl) {
@@ -1366,6 +1359,43 @@ function renderMediaContent(msg) {
     return `<div class="file-message"><i class="fa-solid fa-file-word"></i> <a href="${base64Data}" download="${msg.filename}" target="_blank">${msg.filename || 'Documento Word'}</a></div>`;
   } else {
     return `<div class="file-message"><i class="fa-solid fa-file"></i> <span>Arquivo: ${msg.filename || 'Desconhecido'}</span></div>`;
+  }
+}
+
+// --- ADICIONADO: Função para buscar mídia sob demanda e abrir no modal ---
+async function fetchMediaAndOpen(element, messageId, chatId) {
+  // Mostra um estado de carregamento no placeholder
+  element.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Carregando...';
+  element.onclick = null; // Desativa o clique para evitar múltiplas requisições
+
+  try {
+    const response = await fetch(`/whatsapp/media?messageId=${encodeURIComponent(messageId)}&chatId=${encodeURIComponent(chatId)}`);
+    const result = await response.json();
+
+    if (result.success && result.data) {
+      const dataUrl = `data:${result.mimetype};base64,${result.data}`;
+      if (result.mimetype.startsWith('image/')) {
+        openImageModal(dataUrl, result.mimetype, result.filename);
+      } else if (result.mimetype.startsWith('video/')) {
+        // Para vídeos, podemos substituir o placeholder por um player
+        element.outerHTML = `<video controls autoplay style="max-width:320px;"><source src="${dataUrl}" type="${result.mimetype}"></video>`;
+      } else {
+        // Para outros tipos de arquivo, força o download
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = result.filename || 'arquivo';
+        a.click();
+      }
+      // Remove o placeholder se a ação principal (modal/download) foi executada
+      if (!result.mimetype.startsWith('video/')) {
+        element.remove();
+      }
+    } else {
+      throw new Error(result.error || 'Mídia não encontrada.');
+    }
+  } catch (error) {
+    console.error('Erro ao buscar mídia sob demanda:', error);
+    element.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Falha ao carregar';
   }
 }
 
@@ -1430,6 +1460,78 @@ function tryLoadAudio(element) {
     });
 }
 
+/**
+ * [NOVO] Busca os contatos iniciais da API REST.
+ * Isso acelera o carregamento da página, que depois será atualizada via WebSocket.
+ */
+async function loadInitialContacts() {
+  const list = document.getElementById('conversations-list');
+  if (!list) return;
+
+  // Mostra um estado de carregamento inicial
+  list.innerHTML = `
+    <div class="loading-state">
+      <i class="fa-solid fa-spinner fa-spin"></i>
+      <p>Carregando contatos...</p>
+    </div>
+  `;
+
+  try {
+    const response = await fetch('/api/contacts');
+    if (!response.ok) {
+      throw new Error(`API respondeu com status ${response.status}`);
+    }
+    const contacts = await response.json();
+    window.ultimaListaConversas = contacts;
+    renderConversations(contacts);
+  } catch (error) {
+    console.error('Falha ao carregar contatos iniciais via API:', error);
+    list.innerHTML = `
+      <div class="empty-state">
+        <i class="fa-solid fa-wifi-slash"></i>
+        <p>Erro ao carregar contatos</p>
+        <small>Verifique a conexão com o servidor.</small>
+      </div>
+    `;
+  }
+}
+
+/**
+ * [NOVO] Busca os contatos iniciais da API REST.
+ * Isso acelera o carregamento da página, que depois será atualizada via WebSocket.
+ */
+async function loadInitialContacts() {
+  const list = document.getElementById('conversations-list');
+  if (!list) return;
+
+  // Mostra um estado de carregamento inicial
+  list.innerHTML = `
+    <div class="loading-state">
+      <i class="fa-solid fa-spinner fa-spin"></i>
+      <p>Carregando contatos...</p>
+    </div>
+  `;
+
+  try {
+    const response = await fetch('/api/contacts');
+    if (!response.ok) {
+      throw new Error(`API respondeu com status ${response.status}`);
+    }
+    const contacts = await response.json();
+    window.ultimaListaConversas = contacts;
+    renderConversations(contacts);
+  } catch (error) {
+    console.error('Falha ao carregar contatos iniciais via API:', error);
+    list.innerHTML = `
+      <div class="empty-state">
+        <i class="fa-solid fa-wifi-slash"></i>
+        <p>Erro ao carregar contatos</p>
+        <small>Verifique a conexão com o servidor.</small>
+      </div>
+    `;
+  }
+}
+
 function renderConversations(chats) {
   const list = document.getElementById('conversations-list');
   if (!list) return;
@@ -1472,6 +1574,9 @@ function renderConversations(chats) {
     div.className = `conversation-item${chat.id === selectedChatId ? ' active' : ''}`;
     if (chat.hasNewMessages) {
       div.classList.add('has-new-messages');
+    } else {
+      // Adicionado para garantir que a classe seja removida se não houver novas mensagens
+      div.classList.remove('has-new-messages');
     }
     div.dataset.chatId = chat.id;
 
@@ -1483,12 +1588,18 @@ function renderConversations(chats) {
       ? `<i class="fa-brands fa-whatsapp source-icon whatsapp" title="WhatsApp"></i>`
       : `<i class="fa-solid fa-robot source-icon chatbot" title="Chatbot"></i>`;
 
+    // CORREÇÃO: Usa a URL da foto de perfil se existir, senão, não renderiza a tag de imagem.
+    const profilePicUrl = chat.profilePicUrl;
+
     const lastMessage = chat.lastMessage
       ? (chat.lastMessage.length > 50 ? chat.lastMessage.substring(0, 50) + '...' : chat.lastMessage)
       : 'Sem mensagens';
 
     // Removido texto "WhatsApp (deviceId)" e "Chatbot/Transferido"
     div.innerHTML = `
+      ${profilePicUrl ? `<div class="conversation-pfp">
+        <img src="${profilePicUrl}" alt="Foto de perfil" onerror="this.style.display='none';">
+      </div>` : ''}
       <div class="conversation-header">
         <span class="left">
           ${iconHTML}
@@ -1522,6 +1633,12 @@ function renderConversations(chats) {
 }
 
 function selectChat(chatId, chatName, source) {
+  // [PAGINAÇÃO] Reseta o estado da paginação para a nova conversa
+  currentPage = 1;
+  hasMoreHistory = true;
+  isLoadingHistory = false;
+  // Remove o listener de scroll antigo para evitar chamadas múltiplas
+  document.getElementById('chat-messages').removeEventListener('scroll', handleScroll);
   selectedChatId = chatId;
   const chatTitle = document.getElementById('current-chat-title');
   if (chatTitle) {
@@ -1547,17 +1664,25 @@ function selectChat(chatId, chatName, source) {
   // Sempre buscar do backend para WhatsApp (on-demand) para garantir persistência do BD
   const chatMessages = document.getElementById('chat-messages');
   if (chatMessages) chatMessages.innerHTML = '<p>Carregando mensagens...</p>';
+  // [PAGINAÇÃO] Adiciona o listener de scroll para o novo chat
+  chatMessages.addEventListener('scroll', handleScroll);
 
   // Função para buscar histórico via API REST (mais eficiente)
-  async function fetchChatHistory(chatId, deviceId) {
+  async function fetchChatHistory(chatId, deviceId, page = 1) {
+    if (isLoadingHistory || !hasMoreHistory) return;
+    isLoadingHistory = true;
+
     try {
-      const response = await fetch(`/whatsapp/history?chatId=${encodeURIComponent(chatId)}&deviceId=${encodeURIComponent(deviceId)}`);
+      // [PAGINAÇÃO] Adiciona o parâmetro 'page' na URL
+      const response = await fetch(`/whatsapp/history?chatId=${encodeURIComponent(chatId)}&deviceId=${encodeURIComponent(deviceId)}&page=${page}`);
       if (!response.ok) {
         const errData = await response.json().catch(() => ({ error: 'Falha ao buscar histórico.' }));
         throw new Error(errData.error);
       }
       const data = await response.json();
 
+      // [PAGINAÇÃO] Verifica se há mais páginas para carregar
+      hasMoreHistory = data.hasMore;
       if (data.success) {
         const chatObj = window.ultimaListaConversas?.find(c => c.id === chatId);
         if (chatObj) {
@@ -1565,6 +1690,7 @@ function selectChat(chatId, chatName, source) {
         }
         renderMessages(data.messages); // Renderiza as mensagens na tela
       } else {
+        hasMoreHistory = false;
         throw new Error(data.error || 'Erro desconhecido ao buscar histórico.');
       }
     } catch (error) {
@@ -1572,6 +1698,8 @@ function selectChat(chatId, chatName, source) {
       if (chatMessages) {
         chatMessages.innerHTML = `<div class="empty-chat"><p>Erro ao carregar histórico: ${error.message}</p></div>`;
       }
+    } finally {
+      isLoadingHistory = false;
     }
   }
 
@@ -1580,7 +1708,7 @@ function selectChat(chatId, chatName, source) {
   } else if (source === 'whatsapp') {
     const chatObj = window.ultimaListaConversas?.find(c => c.id === chatId);
     const deviceId = chatObj?.deviceId || currentDeviceId || localStorage.getItem('currentDeviceId');
-    fetchChatHistory(chatId, deviceId); // <<< ALTERADO: Usa a nova rota da API
+    fetchChatHistory(chatId, deviceId, 1); // [PAGINAÇÃO] Inicia com a página 1
   } else {
     renderMessages([]);
   }
@@ -1644,17 +1772,43 @@ const searchInput = document.getElementById('search-conversation');
 if (searchInput) {
   searchInput.addEventListener('input', function () {
     conversationSearchTerm = searchInput.value.trim().toLowerCase();
-    if (window.ultimaListaConversas) {
-      // Filtra e renderiza
-      const filtered = window.ultimaListaConversas.filter(c =>
-        (c.name || '').toLowerCase().includes(conversationSearchTerm) ||
-        (c.id || '').toLowerCase().includes(conversationSearchTerm)
-      );
-      renderConversations(filtered);
-    }
+    // Apenas atualiza o termo de busca e chama a renderização com a lista completa.
+    // A filtragem agora é responsabilidade exclusiva de `renderConversations`.
+    renderConversations(window.ultimaListaConversas || []);
   });
 }
 
+// [PAGINAÇÃO] Handler para o evento de scroll
+function handleScroll() {
+  const chatMessages = document.getElementById('chat-messages');
+  if (chatMessages.scrollTop === 0 && !isLoadingHistory && hasMoreHistory) {
+    currentPage++;
+    const chatObj = window.ultimaListaConversas?.find(c => c.id === selectedChatId);
+    const deviceId = chatObj?.deviceId || currentDeviceId;
+
+    // Adiciona um indicador de carregamento no topo
+    const loadingIndicator = document.createElement('div');
+    loadingIndicator.className = 'loading-history';
+    loadingIndicator.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Carregando mais mensagens...';
+    chatMessages.prepend(loadingIndicator);
+
+    // Mantém a posição do scroll para que não pule
+    const oldScrollHeight = chatMessages.scrollHeight;
+
+    fetch(`/whatsapp/history?chatId=${encodeURIComponent(selectedChatId)}&deviceId=${encodeURIComponent(deviceId)}&page=${currentPage}`)
+      .then(res => res.json())
+      .then(data => {
+        loadingIndicator.remove();
+        if (data.success && data.messages.length > 0) {
+          const newMessagesHtml = data.messages.map(msg => renderMessageHtml(msg)).join('');
+          chatMessages.insertAdjacentHTML('afterbegin', newMessagesHtml);
+          chatMessages.scrollTop = chatMessages.scrollHeight - oldScrollHeight; // Ajusta o scroll
+        }
+        hasMoreHistory = data.hasMore;
+      })
+      .catch(() => loadingIndicator.remove());
+  }
+}
 // Função para desabilitar input e botões
 function disableInputAndButton() {
   const input = document.getElementById('message-input');
@@ -1949,26 +2103,9 @@ document.addEventListener('DOMContentLoaded', function () {
   ensureToastContainer();
   preloadNotificationSound();
 
-  // Restaurar conversas do localStorage
-  const conversasSalvas = localStorage.getItem('ultimaListaConversas');
-  if (conversasSalvas) {
-    try {
-      const chats = JSON.parse(conversasSalvas);
-      window.ultimaListaConversas = chats;
-      console.log('Restaurando conversas do localStorage:', chats.length);
-      setTimeout(() => {
-        renderConversations(chats);
-      }, 0);
-    } catch (error) {
-      console.error('Erro ao restaurar conversas do localStorage:', error);
-    }
-  }
-
-  // Restaurar deviceId do localStorage
-  const savedDeviceId = localStorage.getItem('currentDeviceId');
-  if (savedDeviceId) {
-    currentDeviceId = savedDeviceId;
-  }
+  // [MODIFICADO] Carrega os contatos iniciais da API em vez do localStorage.
+  // O WebSocket cuidará das atualizações em tempo real.
+  loadInitialContacts();
 
   // Conectar WebSockets
   connectAtendimentoWebSocket();
@@ -2414,6 +2551,8 @@ document.addEventListener('DOMContentLoaded', function () {
         window.notificationAudio.volume = notificationVolume;
       }
     });
+  } else {
+    console.warn('Elementos de controle de volume não encontrados na página.');
   }
 
   // Tabs: Contatos | Grupos
@@ -2665,81 +2804,84 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   // Video input listener: validate selected video and upload according to chat source
-  document.getElementById('input-video').addEventListener('change', async function(e) {
-    const file = e.target.files[0];
-    if (!file) return;
+  const videoInput = document.getElementById('input-video');
+  if (videoInput) {
+    videoInput.addEventListener('change', async function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
 
-    // Validação do vídeo
-    const valid = window.VideoUtils.isValidVideo(file);
-    if (!valid.valid) {
-      alert(valid.error);
-      return;
-    }
+      // Validação do vídeo
+      const valid = window.VideoUtils.isValidVideo(file);
+      if (!valid.valid) {
+        alert(valid.error);
+        return;
+      }
 
-    // Identifica se o chat é do chatbot
-    const chatObj = window.ultimaListaConversas.find(c => c.id === selectedChatId);
-    const isChatbot = chatObj && chatObj.source === 'chatbot';
+      // Identifica se o chat é do chatbot
+      const chatObj = window.ultimaListaConversas.find(c => c.id === selectedChatId);
+      const isChatbot = chatObj && chatObj.source === 'chatbot';
 
-    if (isChatbot) {
-      // Envia vídeo para o chatbot via fetch
-      const reader = new FileReader();
-      reader.onload = async function (e) {
-        const base64 = e.target.result.split(',')[1];
-        try {
-          const res = await fetch('/chatbot/send-media', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chatId: selectedChatId,
-              filename: file.name,
+      if (isChatbot) {
+        // Envia vídeo para o chatbot via fetch
+        const reader = new FileReader();
+        reader.onload = async function (e) {
+          const base64 = e.target.result.split(',')[1];
+          try {
+            const res = await fetch('/chatbot/send-media', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chatId: selectedChatId,
+                filename: file.name,
+                mimetype: file.type,
+                data: base64
+              })
+            });
+            const data = await res.json().catch(()=>({}));
+            if (chatMessages.contains(loadingDiv)) {
+              chatMessages.removeChild(loadingDiv);
+            }
+
+            if (!data || !data.success) {
+              console.error('Erro no envio via chatbot:', data && data.error);
+              showNotification('Erro', 'Erro ao enviar vídeo: ' + (data && data.error ? data.error : 'Erro desconhecido'));
+              return;
+            }
+
+            // Mostrar imediatamente o vídeo enviado no UI (mesmo comportamento do WhatsApp)
+            const messageId = (data.message && data.message.id) ? data.message.id : `local_video_${Date.now()}`;
+            const videoMessage = {
+              id: messageId,
+              body: '[Vídeo]',
+              fromMe: true,
+              type: 'video',
+              timestamp: Math.floor(Date.now() / 1000),
               mimetype: file.type,
-              data: base64
-            })
-          });
-          const data = await res.json().catch(()=>({}));
-          if (chatMessages.contains(loadingDiv)) {
-            chatMessages.removeChild(loadingDiv);
+              filename: file.name,
+              data: base64 // incluir base64 para exibir player imediatamente
+            };
+
+            appendMessage(videoMessage);
+            updateLocalChatHistory(selectedChatId, videoMessage);
+
+            console.log('Vídeo enviado com sucesso via chatbot e exibido na UI');
+          } catch (err) {
+            console.error('Erro na requisição:', err);
+            showNotification('Erro', 'Erro ao enviar vídeo: ' + (err.message || 'Erro desconhecido'));
           }
-
-          if (!data || !data.success) {
-            console.error('Erro no envio via chatbot:', data && data.error);
-            showNotification('Erro', 'Erro ao enviar vídeo: ' + (data && data.error ? data.error : 'Erro desconhecido'));
-            return;
-          }
-
-          // Mostrar imediatamente o vídeo enviado no UI (mesmo comportamento do WhatsApp)
-          const messageId = (data.message && data.message.id) ? data.message.id : `local_video_${Date.now()}`;
-          const videoMessage = {
-            id: messageId,
-            body: '[Vídeo]',
-            fromMe: true,
-            type: 'video',
-            timestamp: Math.floor(Date.now() / 1000),
-            mimetype: file.type,
-            filename: file.name,
-            data: base64 // incluir base64 para exibir player imediatamente
-          };
-
-          appendMessage(videoMessage);
-          updateLocalChatHistory(selectedChatId, videoMessage);
-
-          console.log('Vídeo enviado com sucesso via chatbot e exibido na UI');
-        } catch (err) {
-          console.error('Erro na requisição:', err);
-          showNotification('Erro', 'Erro ao enviar vídeo: ' + (err.message || 'Erro desconhecido'));
-        }
-      };
-      reader.onerror = function () {
-        alert('Erro ao ler o arquivo de vídeo.');
-      };
-      reader.readAsDataURL(file);
-    } else {
-      // Envia vídeo para o WhatsApp normal via WebSocket
-      window.VideoUtils.sendVideo(file, selectedChatId, wsWhatsapp, currentDeviceId)
-        .then(msg => console.log('Vídeo enviado:', msg))
-        .catch(err => alert('Erro ao enviar vídeo: ' + err));
-    }
-  });
+        };
+        reader.onerror = function () {
+          alert('Erro ao ler o arquivo de vídeo.');
+        };
+        reader.readAsDataURL(file);
+      } else {
+        // Envia vídeo para o WhatsApp normal via WebSocket
+        window.VideoUtils.sendVideo(file, selectedChatId, wsWhatsapp, currentDeviceId)
+          .then(msg => console.log('Vídeo enviado:', msg))
+          .catch(err => alert('Erro ao enviar vídeo: ' + err));
+      }
+    });
+  }
 }); // <- fim do DOMContentLoaded
 
 // quando o usuário clica/seleciona um contato, em vez de usar histórico local,

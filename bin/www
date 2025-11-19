@@ -104,3 +104,20 @@ function onListening() {
   debug('Listening on ' + bind);
   console.log('Servidor rodando na porta ' + addr.port);
 }
+
+// Função de encerramento limpo
+function shutdown() {
+  console.log('Recebido sinal de encerramento. Fechando o servidor...');
+  server.close(() => {
+    console.log('Servidor encerrado.');
+    process.exit(0);
+  });
+}
+
+// =================================================================
+// ADICIONADO: Garante que o servidor seja encerrado corretamente com Nodemon
+// =================================================================
+// SIGTERM é enviado pelo nodemon em reinicializações automáticas
+process.on('SIGTERM', shutdown);
+// SIGINT é enviado quando você pressiona Ctrl+C no terminal
+process.on('SIGINT', shutdown);

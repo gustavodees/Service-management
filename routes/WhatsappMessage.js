@@ -1,5 +1,6 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('./banco');
+const WhatsappMedia = require('./WhatsappMedia'); // Importa o modelo de mídia
 
 const WhatsappMessage = sequelize.define('WhatsappMessage', {
   id: { type: DataTypes.STRING, primaryKey: true },
@@ -7,6 +8,7 @@ const WhatsappMessage = sequelize.define('WhatsappMessage', {
   deviceId: { type: DataTypes.STRING, allowNull: false },
   // permitir null (chatbot pode salvar sem user explicitamente vinculado)
   userId: { type: DataTypes.INTEGER, allowNull: true },
+  empresa_id: { type: DataTypes.INTEGER, allowNull: true, references: { model: 'empresas', key: 'id' } },
   body: { type: DataTypes.TEXT, allowNull: true },
   fromMe: { type: DataTypes.BOOLEAN, allowNull: true },
   type: { type: DataTypes.STRING, allowNull: true },
@@ -16,10 +18,19 @@ const WhatsappMessage = sequelize.define('WhatsappMessage', {
   timestamp: { type: DataTypes.BIGINT, allowNull: true }
 }, {
   tableName: 'whatsapp_messages',
-  timestamps: false
+  timestamps: false,
+  // OTIMIZAÇÃO: Adiciona um índice composto para acelerar as buscas de histórico.
+  indexes: [
+    {
+      name: 'idx_chat_device_timestamp',
+      fields: ['chatId', 'deviceId', 'timestamp']
+    }
+  ]
 });
 
-// Opcional: sincronizar (apenas se quiser que o Sequelize altere o schema automaticamente)
-//WhatsappMessage.sync({ alter: true }).then(() => console.log('whatsapp_messages pronto')).catch(() => {});
+// OTIMIZAÇÃO: Define a associação para permitir o uso de `include` (JOIN).
+// Uma mensagem (WhatsappMessage) tem uma mídia (WhatsappMedia).
+WhatsappMessage.hasOne(WhatsappMedia, { foreignKey: 'messageId', sourceKey: 'id', as: 'media' });
+WhatsappMedia.belongsTo(WhatsappMessage, { foreignKey: 'messageId', targetKey: 'id' });
 
 module.exports = WhatsappMessage;

@@ -14,7 +14,10 @@ const Usuario = sequelizeUser.define('Usuario', {
     email: {
         type: DataTypes.STRING,
         allowNull: false,
-        unique: true
+        unique: {
+            name: 'email_unique_constraint', // Nome explícito para a restrição
+            msg: 'Este e-mail já está cadastrado.'
+        }
     },
     senha: {
         type: DataTypes.STRING,

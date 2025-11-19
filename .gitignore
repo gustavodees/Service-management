@@ -33,6 +33,7 @@ coverage/
 .wwebjs_auth/
 .wwebjs_cache/
 .eslintcache
+.sessions/
 
 # IDEs / editors
 .vscode/

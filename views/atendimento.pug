@@ -28,11 +28,11 @@ block content
           button#tab-contacts.tab-btn.active Contatos
           button#tab-groups.tab-btn Grupos
         #conversations-list
-          //- A lista de conversas será renderizada aqui pelo JavaScript
-          .empty-state
-            i.fa-solid.fa-comments
-            p Nenhuma conversa ativa
-            small Aguardando mensagens...
+          //- Modificado: Estado inicial de carregamento.
+          //- O script atendimento-ws.js irá substituir isso pela lista de contatos ou por uma mensagem de "Nenhum contato encontrado".
+          .loading-state
+            i.fa-solid.fa-spinner.fa-spin
+            p Carregando contatos...
 
       //- ==========================================================
       //- Coluna 2: Painel do Chat (Centro)
@@ -66,11 +66,11 @@ block content
           button.btn-icon#audio-record-btn(title="Gravar áudio")
             i.fa-solid.fa-microphone
           button.btn-icon#file-clip-btn(title="Anexar arquivo")
-            i.fa-solid.fa-paperclip
+            i.fa-solid fa-paperclip
           input#file-input(type="file", hidden)
           textarea#message-input(rows="1", placeholder="Digite uma mensagem...", disabled)
           button.btn-icon#send-message-btn(title="Enviar mensagem", disabled)
-            i.fa-solid.fa-paper-plane
+            i.fa-solid fa-paper-plane
 
       //- ==========================================================
       //- Coluna 3: Painel de Detalhes (Direita)

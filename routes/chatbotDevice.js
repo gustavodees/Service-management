@@ -7,11 +7,14 @@ const ChatbotDevice = sequelizeUser.define('chatbot_devices', {
         autoIncrement: true,
         primaryKey: true
     },
-    device_id: {
-        type: DataTypes.STRING,
-        allowNull: false,
-        unique: true
-    },
+   device_id: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: {
+        name: 'chatbot_device_id_unique_constraint', // Nome explícito para a restrição
+        msg: 'Este ID de dispositivo de chatbot já está em uso.'
+    }
+},
     status: {
         type: DataTypes.STRING,
         allowNull: false,

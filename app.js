@@ -21,10 +21,15 @@ const { body, validationResult } = require('express-validator'); // Validação 
 
 const WhatsappDevice = require('./routes/whatsappDevice'); // Adicionado
 const ChatbotDevice = require('./routes/chatbotDevice'); // Adicionado
-const whatsappManager = require('./whatsappManager'); // Adicionado: Gerenciador de clientes WhatsApp
+const whatsappManager = require('./routes/whatsappManager'); // Adicionado: Gerenciador de clientes WhatsApp
 
+// Adicionado: Objeto em memória para rastrear o progresso das tarefas de sincronização
+const syncTasks = {};
+
+const apiRouter = require('./routes/api'); // <<< ADICIONADO: Importar a nova rota da API
 // Adicionado: Importar todos os modelos para sincronização
 const Tabulacao = require('./routes/Tabulacao');
+const Conversation = require('./routes/Conversation'); // <<< ADICIONADO
 const WhatsappMessage = require('./routes/WhatsappMessage');
 const WhatsappMedia = require('./routes/WhatsappMedia');
 const ActivityLog = require('./routes/ActivityLog'); // Adicionado
@@ -74,11 +79,16 @@ whatsappManager.whatsappEvents.on('qr_update', ({ deviceId, qr }) => {
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
-      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-      "script-src": ["'self'", "'unsafe-inline'"], // Permite scripts do próprio domínio e inline (temporário para teste)
-      "style-src": ["'self'", "https://fonts.googleapis.com", "'unsafe-inline'"],
-      "font-src": ["'self'", "https://fonts.googleapis.com", "data:"],
-      "img-src": ["'self'", "data:"], // Permite imagens do próprio domínio e data URIs (para o QR Code).
+      ...helmet.contentSecurityPolicy.getDefaultDirectives(), // Pega as diretivas padrão
+      // Permite scripts do próprio domínio, inline, e dos CDNs especificados
+      "script-src": ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://code.jquery.com", "https://stackpath.bootstrapcdn.com", "https://cdnjs.cloudflare.com"],
+      // Permite estilos do próprio domínio, inline, e dos CDNs especificados
+      "style-src": ["'self'", "https://fonts.googleapis.com", "https://stackpath.bootstrapcdn.com", "https://cdnjs.cloudflare.com", "'unsafe-inline'"],
+      "font-src": ["'self'", "https://fonts.googleapis.com", "https://cdnjs.cloudflare.com", "data:"],
+      // CORRIGIDO: Permite imagens do próprio domínio, data URIs, e do i.imgur.com
+      "img-src": ["'self'", "data:", "https://i.imgur.com", "https://*.imgur.com"],
+      // Adicionado: Permite conexões (para buscar .map files) para os CDNs
+      "connect-src": ["'self'", "https://stackpath.bootstrapcdn.com", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com"],
     },
   },
 }));
@@ -165,6 +175,7 @@ app.use('/', indexRouter);
 app.use('/users', usersRouter);
 app.use('/admin', adminRouter); // Adicionado
 app.use('/chatbot', chatbotRouter);
+app.use('/api', apiRouter); // <<< ADICIONADO: Registra a rota /api/contacts
 
 // Adicionado: Upgrade de conexão para o WebSocket
 server.on('upgrade', (request, socket, head) => {
@@ -530,8 +541,11 @@ app.post('/whatsapp/disconnect-device', verificaAutenticacao, async (req, res) =
 
 // Adicionado: Rota para buscar o histórico de mensagens de um chat do banco de dados
 app.get('/whatsapp/history', verificaAutenticacao, async (req, res) => {
-  const { chatId, deviceId } = req.query;
+  // [PAGINAÇÃO] Adiciona 'page' e define um limite de mensagens por página
+  const { chatId, deviceId, page = 1 } = req.query;
   const { empresa_id } = req.session.usuario;
+  const limit = 50; // 50 mensagens por página
+  const offset = (parseInt(page, 10) - 1) * limit;
 
   if (!chatId || !deviceId) {
     return res.status(400).json({ success: false, error: 'chatId e deviceId são obrigatórios.' });
@@ -547,43 +561,135 @@ app.get('/whatsapp/history', verificaAutenticacao, async (req, res) => {
       return res.status(403).json({ success: false, error: 'Acesso não autorizado a este dispositivo.' });
     }
 
-    // 2. Busca as mensagens e mídias em paralelo para mais performance
-    const [messages, medias] = await Promise.all([
-      WhatsappMessage.findAll({
-        where: { chatId, deviceId },
-        order: [['timestamp', 'ASC']],
-        limit: 100, // Limita a 100 mensagens para evitar sobrecarga
-        raw: true,
-      }),
-      WhatsappMedia.findAll({
-        where: { chatId, deviceId },
-        attributes: ['messageId', 'mimetype', 'filename', 'data'], // Pega apenas os dados necessários
-        raw: true,
-      })
-    ]);
-
-    // 3. Combina as mídias com suas respectivas mensagens
-    const mediaMap = new Map(medias.map(m => [m.messageId, m]));
-
-    const combinedHistory = messages.map(msg => {
-      const media = mediaMap.get(msg.id);
-      if (media) {
-        return {
-          ...msg,
-          hasMedia: true,
-          mimetype: media.mimetype,
-          filename: media.filename,
-          data: media.data, // Anexa o base64 da mídia
-        };
-      }
-      return msg;
+    // 2. Busca as mensagens e suas mídias associadas em uma única consulta usando JOIN.
+    // Isso é muito mais eficiente do que fazer duas queries separadas.
+    const { count, rows: messagesWithMedia } = await WhatsappMessage.findAndCountAll({
+      where: { chatId, deviceId },
+      include: [{
+        model: WhatsappMedia,
+        as: 'media', // 'as' deve corresponder ao alias definido na associação
+        // OTIMIZAÇÃO: Não busca o 'data' (base64) na listagem. Ele será buscado sob demanda.
+        attributes: ['mimetype', 'filename'],
+        required: false // LEFT JOIN para incluir mensagens mesmo que não tenham mídia
+      }],
+      order: [['timestamp', 'DESC']], // [PAGINAÇÃO] Ordena do mais novo para o mais antigo
+      limit: limit,
+      offset: offset,
     });
 
-    res.json({ success: true, messages: combinedHistory });
+    // 3. Formata o resultado para o frontend
+    const combinedHistory = messagesWithMedia.map(msg => {
+      const messageJson = msg.toJSON();
+      if (messageJson.media) {
+        return {
+          ...messageJson,
+          hasMedia: true,
+          mimetype: messageJson.media.mimetype,
+          filename: messageJson.media.filename,
+          // 'data' não é mais enviado aqui para otimizar a carga inicial.
+        };
+      }
+      return messageJson;
+    });
+    
+    // [PAGINAÇÃO] Inverte a ordem para o frontend exibir corretamente (mais antigo primeiro)
+    const finalHistory = combinedHistory.reverse();
+    const hasMore = (offset + finalHistory.length) < count;
+
+    res.json({ success: true, messages: finalHistory, hasMore: hasMore });
   } catch (error) {
     console.error('Erro ao buscar histórico de chat:', error);
     res.status(500).json({ success: false, error: 'Erro interno do servidor.' });
   }
+});
+
+// --- ADICIONADO: ROTA PARA BUSCAR MÍDIA SOB DEMANDA ---
+app.get('/whatsapp/media', verificaAutenticacao, async (req, res) => {
+  const { messageId, chatId } = req.query;
+  const { empresa_id } = req.session.usuario;
+
+  if (!messageId || !chatId) {
+    return res.status(400).json({ success: false, error: 'messageId e chatId são obrigatórios.' });
+  }
+
+  try {
+    // Validação de segurança: Verifica se a mensagem pertence à empresa do usuário
+    const message = await WhatsappMessage.findOne({
+      where: { id: messageId, chatId, empresa_id },
+      attributes: ['id'] // Só precisa verificar a existência
+    });
+
+    if (!message) {
+      return res.status(403).json({ success: false, error: 'Acesso não autorizado a esta mídia.' });
+    }
+
+    // Busca a mídia no banco de dados
+    const media = await WhatsappMedia.findOne({ where: { messageId } });
+
+    if (media && media.data) {
+      res.json({ success: true, data: media.data, mimetype: media.mimetype, filename: media.filename });
+    } else {
+      res.status(404).json({ success: false, error: 'Mídia não encontrada.' });
+    }
+  } catch (error) {
+    console.error('Erro ao buscar mídia sob demanda:', error);
+    res.status(500).json({ success: false, error: 'Erro interno do servidor.' });
+  }
+});
+
+// --- ADICIONADO: ROTAS PARA SINCRONIZAÇÃO DE CONTATOS ---
+
+/**
+ * Rota para INICIAR a sincronização de contatos de um dispositivo.
+ * Ela cria uma tarefa em segundo plano e retorna um ID para consulta.
+ */
+app.post('/whatsapp/start-sync/:deviceId', verificaAutenticacao, async (req, res) => {
+  const { deviceId } = req.params;
+  const { empresa_id } = req.session.usuario;
+
+  // Validação de segurança
+  const device = await WhatsappDevice.findOne({ where: { device_id: deviceId, empresa_id } });
+  if (!device) {
+    return res.status(403).json({ success: false, error: 'Dispositivo não encontrado ou não autorizado.' });
+  }
+
+  // CORREÇÃO: A verificação de 'ready' foi movida para dentro do whatsappManager.
+  // A rota agora sempre cria uma tarefa e deixa o manager lidar com o estado do cliente.
+  // Isso evita o erro de 'taskId' indefinido no frontend.
+  const client = whatsappManager.getClient(deviceId); // Pega o cliente, mesmo que não esteja pronto.
+
+  const taskId = uuidv4();
+  // Inicia a tarefa com status 'Iniciando...'. O whatsappManager atualizará se precisar reconectar.
+  syncTasks[taskId] = { progress: 0, message: 'Iniciando...', done: false };
+
+  // Retorna o ID da tarefa imediatamente para o frontend
+  res.json({ success: true, taskId });
+
+  // --- Executa a sincronização em segundo plano (sem bloquear a resposta) ---
+  (async () => {
+    try {
+      // A lógica de sincronização agora está centralizada no whatsappManager.
+      // CORRIGIDO: Passa a instância do cliente para a função.
+      await whatsappManager.syncChats(client, deviceId, empresa_id, taskId, syncTasks);
+    } catch (error) {
+      console.error(`[Sync ${taskId}] Erro durante a sincronização:`, error);
+      syncTasks[taskId] = { progress: 100, message: 'Erro na sincronização.', done: true, error: error.message };
+    } finally {
+      // Limpa a tarefa da memória após 5 minutos para não acumular
+      setTimeout(() => {
+        delete syncTasks[taskId];
+      }, 300000);
+    }
+  })();
+});
+
+/**
+ * Rota para VERIFICAR o status de uma tarefa de sincronização.
+ */
+app.get('/whatsapp/sync-status/:taskId', verificaAutenticacao, (req, res) => {
+  const { taskId } = req.params;
+  const task = syncTasks[taskId];
+  res.json(task || { progress: 100, message: 'Tarefa não encontrada.', done: true });
 });
 
 // Rota para deletar usuário
