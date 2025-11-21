@@ -56,17 +56,18 @@ whatsappManager.setWebSocket(wss);
 
 // Adicionado: Centraliza o envio de QR Code via WebSocket
 // Ouve o evento 'qr_update' do whatsappManager
-whatsappManager.whatsappEvents.on('qr_update', ({ deviceId, qr }) => {
+whatsappManager.whatsappEvents.on('qr_update', ({ deviceId, qr, empresaId }) => {
   // Gera o QR Code como um Data URI
   qrcode.toDataURL(qr, (err, url) => {
     if (err) {
-      console.error(`Falha ao gerar QR Code para ${deviceId}:`, err);
+      console.error('Erro ao gerar QR Code Data URL:', err);
       return;
     }
-    // Envia a mensagem para todos os clientes WebSocket conectados
+    // Envia a mensagem apenas para os clientes WebSocket da empresa correta
     wss.clients.forEach(client => {
-      if (client.readyState === 1) { // WebSocket.OPEN
-        client.send(JSON.stringify({ type: 'qr', deviceId, qrDataURL: url }));
+      // Verifica se o cliente pertence à empresa do dispositivo
+      if (client.empresa_id === empresaId) {
+        client.send(JSON.stringify({ type: 'qr-code', deviceId, qrDataURL: url }));
       }
     });
   });
@@ -171,6 +172,41 @@ app.post('/upload-files', verificaAutenticacao, upload.array('files'), (req, res
   res.json({ success: true, message: 'Arquivos enviados com sucesso!', files: req.files });
 });
 
+// --- ADICIONADO: ROTA PARA ENVIAR MENSAGENS ---
+app.post('/api/whatsapp/send-message', verificaAutenticacao, async (req, res) => {
+  const { deviceId, chatId, message } = req.body;
+  const { empresa_id } = req.session.usuario;
+
+  if (!deviceId || !chatId || !message) {
+    return res.status(400).json({ success: false, message: 'deviceId, chatId e message são obrigatórios.' });
+  }
+
+  try {
+    // Validação de segurança: Garante que o dispositivo pertence à empresa do usuário
+    const device = await WhatsappDevice.findOne({ where: { device_id: deviceId, empresa_id } });
+    if (!device) {
+      return res.status(403).json({ success: false, message: 'Acesso não autorizado a este dispositivo.' });
+    }
+
+    const client = whatsappManager.getClient(deviceId);
+    if (!client) {
+      return res.status(404).json({ success: false, message: 'Cliente WhatsApp não está conectado ou pronto.' });
+    }
+
+    // Envia a mensagem usando o whatsapp-web.js
+    const sentMessage = await client.sendMessage(chatId, message);
+
+    // Opcional: Salvar a mensagem enviada no banco de dados (o evento 'message_create' já faz isso, mas aqui garante)
+    // A lógica no 'message_create' já é suficiente para capturar a mensagem enviada.
+
+    res.json({ success: true, message: 'Mensagem enviada com sucesso.', sentMessageId: sentMessage.id.id });
+
+  } catch (error) {
+    console.error('Erro ao enviar mensagem:', error);
+    res.status(500).json({ success: false, message: 'Erro interno do servidor ao enviar mensagem.' });
+  }
+});
+
 app.use('/', indexRouter);
 app.use('/users', usersRouter);
 app.use('/admin', adminRouter); // Adicionado
@@ -187,6 +223,11 @@ server.on('upgrade', (request, socket, head) => {
       return;
     }
     wss.handleUpgrade(request, socket, head, (ws) => {
+      // Adicionado: Associa o ID da empresa da sessão ao cliente WebSocket.
+      // Isso é crucial para garantir que os dados só sejam enviados para a empresa correta.
+      if (request.session && request.session.usuario) {
+        ws.empresa_id = request.session.usuario.empresa_id;
+      }
       wss.emit('connection', ws, request);
     });
   });
@@ -554,7 +595,8 @@ app.get('/whatsapp/history', verificaAutenticacao, async (req, res) => {
   try {
     // 1. Validação de segurança: Garante que o dispositivo pertence à empresa do usuário
     const device = await WhatsappDevice.findOne({
-      where: { device_id: deviceId, empresa_id: empresa_id }
+      // CORREÇÃO: Garante que o deviceId consultado pertence à empresa do usuário logado.
+      where: { device_id: deviceId, empresa_id }
     });
 
     if (!device) {
@@ -565,7 +607,10 @@ app.get('/whatsapp/history', verificaAutenticacao, async (req, res) => {
     // Isso é muito mais eficiente do que fazer duas queries separadas.
     const { count, rows: messagesWithMedia } = await WhatsappMessage.findAndCountAll({
       where: { chatId, deviceId },
-      include: [{
+      // CORREÇÃO CRÍTICA: Adicionado filtro por `empresa_id` para garantir a segurança
+      // e corrigir o erro "Acesso não autorizado" quando os dados estão corretos. (Esta linha estava duplicada e causando erro de sintaxe)
+      where: { chatId, deviceId, empresa_id },
+       include: [{
         model: WhatsappMedia,
         as: 'media', // 'as' deve corresponder ao alias definido na associação
         // OTIMIZAÇÃO: Não busca o 'data' (base64) na listagem. Ele será buscado sob demanda.
@@ -579,19 +624,21 @@ app.get('/whatsapp/history', verificaAutenticacao, async (req, res) => {
 
     // 3. Formata o resultado para o frontend
     const combinedHistory = messagesWithMedia.map(msg => {
-      const messageJson = msg.toJSON();
-      if (messageJson.media) {
-        return {
-          ...messageJson,
-          hasMedia: true,
-          mimetype: messageJson.media.mimetype,
-          filename: messageJson.media.filename,
-          // 'data' não é mais enviado aqui para otimizar a carga inicial.
-        };
-      }
-      return messageJson;
+      const messageData = msg.toJSON();
+
+      // CORREÇÃO: Garante que 'fromMe' seja sempre um booleano.
+      // O banco de dados pode armazenar como 0/1, o que pode confundir o JavaScript do frontend.
+      // Isso garante que as mensagens enviadas por você fiquem sempre à direita.
+      const finalMessage = {
+        ...messageData,
+        fromMe: !!messageData.fromMe, // Converte para booleano (true/false)
+        hasMedia: !!messageData.media, // Adiciona a flag 'hasMedia' se houver mídia
+        mimetype: messageData.media ? messageData.media.mimetype : null,
+        filename: messageData.media ? messageData.media.filename : null,
+      };
+      return finalMessage;
     });
-    
+
     // [PAGINAÇÃO] Inverte a ordem para o frontend exibir corretamente (mais antigo primeiro)
     const finalHistory = combinedHistory.reverse();
     const hasMore = (offset + finalHistory.length) < count;
@@ -669,9 +716,14 @@ app.post('/whatsapp/start-sync/:deviceId', verificaAutenticacao, async (req, res
   (async () => {
     try {
       // A lógica de sincronização agora está centralizada no whatsappManager.
+      // ADICIONADO: Logs para depuração do processo de sincronização.
+      console.log('======================================================');
+      console.log(`[SYNC START] Iniciando sincronização para o device: ${deviceId}`);
+      console.log(`[SYNC INFO] Empresa ID: ${empresa_id}, Task ID: ${taskId}`);
+      console.log('======================================================');
       // CORRIGIDO: Passa a instância do cliente para a função.
       await whatsappManager.syncChats(client, deviceId, empresa_id, taskId, syncTasks);
-    } catch (error) {
+    } catch (error) { // eslint-disable-line no-shadow
       console.error(`[Sync ${taskId}] Erro durante a sincronização:`, error);
       syncTasks[taskId] = { progress: 100, message: 'Erro na sincronização.', done: true, error: error.message };
     } finally {
@@ -690,6 +742,42 @@ app.get('/whatsapp/sync-status/:taskId', verificaAutenticacao, (req, res) => {
   const { taskId } = req.params;
   const task = syncTasks[taskId];
   res.json(task || { progress: 100, message: 'Tarefa não encontrada.', done: true });
+});
+
+// --- ADICIONADO: ROTA PARA FORÇAR A ATUALIZAÇÃO DE UM ÚNICO CHAT ---
+app.post('/api/whatsapp/sync-chat', verificaAutenticacao, async (req, res) => {
+  const { deviceId, chatId } = req.body;
+  const { empresa_id } = req.session.usuario;
+
+  if (!deviceId || !chatId) {
+    return res.status(400).json({ success: false, message: 'deviceId e chatId são obrigatórios.' });
+  }
+
+  try {
+    // Validação de segurança: Garante que o dispositivo pertence à empresa do usuário
+    const device = await WhatsappDevice.findOne({ where: { device_id: deviceId, empresa_id } });
+    if (!device) {
+      return res.status(403).json({ success: false, message: 'Acesso não autorizado a este dispositivo.' });
+    }
+
+    const client = whatsappManager.getClient(deviceId);
+    if (!client) {
+      return res.status(404).json({ success: false, message: 'Cliente WhatsApp não está conectado.' });
+    }
+
+    // Executa a sincronização da conversa específica em segundo plano
+    whatsappManager.syncSingleChat(client, deviceId, chatId, empresa_id)
+      .then(() => {
+        console.log(`[SYNC-SINGLE] Sincronização da conversa ${chatId} concluída com sucesso.`);
+      })
+      .catch(err => {
+        console.error(`[SYNC-SINGLE] Erro ao sincronizar a conversa ${chatId}:`, err);
+      });
+
+    res.json({ success: true, message: 'Sincronização da conversa iniciada.' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erro interno do servidor.' });
+  }
 });
 
 // Rota para deletar usuário

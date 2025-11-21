@@ -1,63 +1,63 @@
 const express = require('express');
 const router = express.Router();
-// CORRIGIDO: Aponta para o arquivo de conexão do banco de dados correto (sequelize)
-const db = require('./banco'); 
+const sequelize = require('./banco');
+const { QueryTypes } = require('sequelize');
+const verificaAutenticacao = require('./verificaAutenticacao');
 
 /**
  * Rota: GET /api/contacts
- * 
+ *
  * Busca uma lista consolidada de contatos/conversas para a tela de atendimento.
- * Esta rota é ideal para o carregamento inicial da página.
- * 
- * Retorna um array de objetos de contato, cada um com:
- * - id: Identificador único da conversa (ex: 'whatsapp:5511999998888@c.us')
- * - name: Nome do contato ou do grupo.
- * - profilePicUrl: URL da foto de perfil (pode ser null).
- * - lastMessage: O conteúdo da última mensagem.
- * - timestamp: A data/hora da última mensagem em formato ISO.
- * - unreadCount: Número de mensagens não lidas.
- * - isGroup: Booleano indicando se é um grupo.
- * - source: Origem da conversa ('whatsapp' ou 'chatbot').
- * - deviceId: ID do dispositivo associado (para contatos do WhatsApp).
+ * Esta rota é otimizada para o carregamento inicial da página.
+ * Ela busca a última mensagem de cada conversa diretamente da tabela de mensagens.
  */
-router.get('/contacts', async (req, res) => {
+router.get('/contacts', verificaAutenticacao, async (req, res) => {
   try {
-    console.log('[API /contacts] Rota acessada.');
-
-    // Validação de autenticação (exemplo)
-    if (!req.session || !req.session.usuario || !req.session.usuario.id) {
-      console.warn('[API /contacts] Acesso negado: Sessão ou usuário não encontrado.');
-      return res.status(401).json({ error: 'Não autorizado' });
+    if (!req.session || !req.session.usuario || !req.session.usuario.empresa_id) {
+      return res.status(401).json({ error: 'Não autorizado ou empresa não identificada.' });
     }
 
     const empresaId = req.session.usuario.empresa_id;
-    console.log(`[API /contacts] Buscando contatos para empresa_id: ${empresaId}`);
 
-    // Exemplo de query SQL para buscar contatos.
-    // Você precisará adaptar esta query para a estrutura real da sua tabela de contatos/conversas.
+    // Query otimizada para buscar a última mensagem de cada conversa (chatId)
+    // para uma empresa específica.
     const query = `
-      SELECT 
-        c.id, 
-        c.name, 
-        c.profile_pic_url AS profilePicUrl,
-        c.last_message AS lastMessage,
-        c.timestamp,
-        c.unread_count AS unreadCount,
-        c.is_group AS isGroup,
-        c.source,
-        c.device_id AS deviceId
-      FROM conversations c
-      WHERE c.empresa_id = ?
-      ORDER BY c.timestamp DESC
+      SELECT
+          m.chatId as id,
+          c.name,
+          c.profile_pic_url as profilePicUrl,
+          m.body as lastMessage,
+          (SELECT COUNT(*) FROM whatsapp_messages WHERE chatId = m.chatId AND fromMe = 0 AND empresa_id = :empresaId) as unreadCount,
+          c.is_group as isGroup,
+          'whatsapp' as source,
+          m.deviceId
+      FROM
+          whatsapp_messages m
+      LEFT JOIN
+          conversations c ON m.chatId = c.id
+      WHERE
+          m.id IN (
+              SELECT
+                  MAX(id)
+              FROM
+                  whatsapp_messages
+              WHERE
+                empresa_id = :empresaId
+              GROUP BY
+                  chatId
+          )
+      ORDER BY
+          m.timestamp DESC;
     `;
 
-    // CORRIGIDO: A sintaxe db.promise().query() é para mysql2.
-    // A sintaxe correta para executar uma query raw com Sequelize é db.query().
-    const [contacts] = await db.query(query, { replacements: [empresaId] });
+    const contacts = await sequelize.query(query, {
+      replacements: { empresaId },
+      type: QueryTypes.SELECT
+    });
 
-    console.log(`[API /contacts] Query retornou ${contacts.length} contatos.`);
-
+    console.log(`[API /contacts] Query retornou ${contacts.length} contatos para a empresa ${empresaId}.`);
     res.json(contacts);
+
   } catch (error) {
     console.error('Erro ao buscar contatos via API:', error);
     res.status(500).json({ error: 'Erro interno do servidor ao buscar contatos.' });

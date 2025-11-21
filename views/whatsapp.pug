@@ -82,7 +82,7 @@ block content
           if (data.deviceId !== deviceId) return;
 
           switch (data.type) {
-            case 'qr':
+            case 'qr-code': // CORREÇÃO: O evento agora é 'qr-code'
               setStatus('connecting', 'QR Code recebido. Escaneie abaixo.');
               
               // A mágica acontece aqui: o servidor já envia a imagem pronta (data.qrDataURL)
