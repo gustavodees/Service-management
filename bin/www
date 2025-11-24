@@ -23,26 +23,23 @@ const port = normalizePort(process.env.PORT || '3000');
 app.set('port', port);
 
 /**
+ * Função para iniciar o servidor.
+ * Tenta escutar na porta fornecida. Se estiver em uso, tenta a próxima.
+ * @param {number} portToTry A porta para tentar iniciar o servidor.
+ */
+function startServer(portToTry) {
+  app.set('port', portToTry);
+  server.listen(portToTry);
+}
+
+/**
  * Listen on provided port, on all network interfaces.
  *
  * Evita chamar listen() duas vezes se o server já estiver escutando.
- */
-if (server.listening) {
-  try {
-    const addr = server.address();
-    const portInfo = addr && addr.port ? addr.port : '(already listening)';
-    console.log(`Server já escutando na porta ${portInfo}`);
-  } catch (e) {
-    console.log('Server já escutando (endereço indisponível)');
-  }
-  // garante que handlers de erro/listening existam caso não tenham sido ligados
-  server.on('error', onError);
-  server.on('listening', onListening);
-} else {
-  server.listen(port);
-  server.on('error', onError);
-  server.on('listening', onListening);
-}
+*/
+startServer(port); // Inicia o servidor com a porta inicial
+server.on('error', onError);
+server.on('listening', onListening);
 
 /**
  * Normalize a port into a number, string, or false.
@@ -73,9 +70,8 @@ function onError(error) {
     throw error;
   }
 
-  var bind = typeof port === 'string'
-    ? 'Pipe ' + port
-    : 'Port ' + port;
+  const portInUse = app.get('port');
+  const bind = typeof portInUse === 'string' ? `Pipe ${portInUse}` : `Port ${portInUse}`;
 
   // handle specific listen errors with friendly messages
   switch (error.code) {
@@ -84,8 +80,8 @@ function onError(error) {
       process.exit(1);
       break;
     case 'EADDRINUSE':
-      console.error(bind + ' is already in use');
-      process.exit(1);
+      console.error(`${bind} já está em uso. Tentando a próxima porta...`);
+      startServer(portInUse + 1); // Tenta a próxima porta
       break;
     default:
       throw error;
@@ -95,25 +91,23 @@ function onError(error) {
 /**
  * Event listener for HTTP server "listening" event.
  */
-
 function onListening() {
   var addr = server.address();
   var bind = typeof addr === 'string'
     ? 'pipe ' + addr
     : 'port ' + addr.port;
   debug('Listening on ' + bind);
-  console.log('Servidor rodando na porta ' + addr.port);
+  console.log('Listening on ' + bind);
 }
 
-// Função de encerramento limpo
+
 function shutdown() {
-  console.log('Recebido sinal de encerramento. Fechando o servidor...');
+  console.log('Shutting down server...');
   server.close(() => {
-    console.log('Servidor encerrado.');
+    console.log('Server shut down.');
     process.exit(0);
   });
 }
-
 // =================================================================
 // ADICIONADO: Garante que o servidor seja encerrado corretamente com Nodemon
 // =================================================================

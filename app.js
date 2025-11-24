@@ -42,6 +42,7 @@ var chatbotRouter = require('./routes/chatbot');
 const Usuario = require('./routes/Usuario');
 const bcrypt = require('bcrypt');
 const verificaAutenticacao = require('./routes/verificaAutenticacao');
+const verificaAcessoMestre = require('./routes/verificaAcessoMestre'); // <<< ADICIONADO
 
 const app = express();
 const server = http.createServer(app);
@@ -53,6 +54,89 @@ const wss = new WebSocketServer({
 
 // Passa a instância do WebSocket para o gerenciador
 whatsappManager.setWebSocket(wss);
+
+wss.on('connection', (ws, request) => {
+  console.log('Cliente WebSocket conectado.');
+
+  // Anexa userId e empresaId do socket via sessão, que já foi validada no 'upgrade'
+  ws.userId = request.session.usuario.id;
+  ws.empresaId = request.session.usuario.empresa_id;
+
+  ws.on('message', async (data) => {
+    try {
+      const message = JSON.parse(data);
+      console.log('Mensagem recebida do WebSocket:', message);
+
+      const deviceId = message.deviceId;
+      const userId = ws.userId;
+      const empresaId = ws.empresaId;
+
+      switch (message.type) {
+        case 'send-message': {
+          // Validação de segurança: o deviceId pertence à empresa do usuário?
+          if (!deviceId) {
+            throw new Error('DeviceId não fornecido.');
+          }
+                // VERIFICAÇÃO DE AUTORIZAÇÃO DO DISPOSITIVO
+                const device = await WhatsappDevice.findOne({
+                    where: {
+                        device_id: deviceId
+                    }
+                });
+
+                if (!device) {
+                    throw new Error('Dispositivo não encontrado.');
+                }
+
+          if (!message.chatId || !message.body) {
+            throw new Error('ChatId ou mensagem vazia.');
+          }
+
+          const sentMessageRaw = await whatsappManager.sendMessage(deviceId, message.chatId, message.body);
+
+          ws.send(JSON.stringify({
+            type: 'message-sent',
+            chatId: message.chatId,
+            success: true,
+            messageId: sentMessageRaw.id.id,
+            deviceId
+          }));
+          break;
+        }
+
+        case 'typing-start': {
+          if (!deviceId || !message.chatId) break;
+          whatsappManager.setChatState(deviceId, message.chatId, 'typing').catch(console.error);
+          break;
+        }
+        case 'recording-start': {
+          if (!deviceId || !message.chatId) break;
+          whatsappManager.setChatState(deviceId, message.chatId, 'recording').catch(console.error);
+          break;
+        }
+        case 'typing-stop':
+        case 'recording-stop': { // both clear the state
+          if (!deviceId || !message.chatId) break;
+          whatsappManager.setChatState(deviceId, message.chatId, 'clear').catch(console.error);
+          break;
+        }
+
+        // Outros cases podem ser adicionados aqui
+        default:
+          console.warn(`[WSS] Tipo de mensagem não reconhecido: ${message.type}`);
+          // Responder com erro pode não ser ideal para todos os tipos não reconhecidos
+          // ws.send(JSON.stringify({ type: 'error', message: 'Tipo de mensagem não reconhecido' }));
+      }
+    } catch (error) {
+      console.error('[WSS] Erro ao processar mensagem:', error);
+      ws.send(JSON.stringify({ type: 'error', message: error.message || 'Erro interno do servidor.' }));
+    }
+  });
+
+  ws.on('close', () => {
+    console.log('Cliente WebSocket desconectado.');
+  });
+});
 
 // Adicionado: Centraliza o envio de QR Code via WebSocket
 // Ouve o evento 'qr_update' do whatsappManager
@@ -131,8 +215,11 @@ app.use(async (req, res, next) => {
     res.locals.usuarioTipo = req.session.usuario.tipo;
     res.locals.usuarioEmpresaId = req.session.usuario.empresa_id;
 
-    // Se for admin host, contar empresas pendentes
-    if (req.session.usuario.tipo === 'admin' && !req.session.usuario.empresa_id) {
+    // Se for super_admin ou admin host, contar empresas pendentes
+    const isSuperAdmin = req.session.usuario.tipo === 'super_admin';
+    const isAdminHost = req.session.usuario.tipo === 'admin' && !req.session.usuario.empresa_id;
+
+    if (isSuperAdmin || isAdminHost) {
       const count = await Empresa.count({ where: { status: 'pendente' } });
       res.locals.empresasPendentes = count;
       res.locals.nomeEmpresaLogada = 'Acesso Mestre'; // Nome para o admin host
@@ -207,6 +294,39 @@ app.post('/api/whatsapp/send-message', verificaAutenticacao, async (req, res) =>
   }
 });
 
+// ADICIONADO: Rota para enviar arquivos de mídia
+app.post('/api/whatsapp/send-media', verificaAutenticacao, upload.single('file'), async (req, res) => {
+  const { deviceId, chatId } = req.body;
+  const { empresa_id } = req.session.usuario;
+  const file = req.file;
+
+  if (!deviceId || !chatId || !file) {
+    return res.status(400).json({ success: false, message: 'deviceId, chatId e um arquivo são obrigatórios.' });
+  }
+
+  try {
+    // Validação de segurança
+    const device = await WhatsappDevice.findOne({ where: { device_id: deviceId, empresa_id } });
+    if (!device) {
+      // Limpa o arquivo temporário se a validação falhar
+      fs.unlinkSync(file.path);
+      return res.status(403).json({ success: false, message: 'Acesso não autorizado a este dispositivo.' });
+    }
+
+    // Chama o gerenciador para enviar a mídia
+    const sentMessage = await whatsappManager.sendMedia(deviceId, chatId, file.path, file.originalname, file.mimetype);
+
+    res.json({ success: true, message: 'Mídia enviada com sucesso.', sentMessageId: sentMessage.id.id });
+
+  } catch (error) {
+    console.error('Erro ao enviar mídia:', error);
+    res.status(500).json({ success: false, message: error.message || 'Erro interno do servidor ao enviar mídia.' });
+  } finally {
+    // Garante que o arquivo de upload seja sempre removido após a tentativa de envio
+    if (file && fs.existsSync(file.path)) fs.unlinkSync(file.path);
+  }
+});
+
 app.use('/', indexRouter);
 app.use('/users', usersRouter);
 app.use('/admin', adminRouter); // Adicionado
@@ -233,30 +353,9 @@ server.on('upgrade', (request, socket, head) => {
   });
 });
 
-// Rota da API para validar o CNPJ
-app.post('/api/validar-cnpj', async (req, res) => {
-  const { cnpj } = req.body;
-  if (!cnpj) {
-    return res.status(400).json({ success: false, message: 'CNPJ não fornecido.' });
-  }
-
-  try {
-    const empresa = await Empresa.findOne({ where: { cnpj: cnpj.replace(/[.\-/]/g, '') } });
-
-    if (empresa) {
-      res.json({ success: true, nome_fantasia: empresa.nome_fantasia });
-    } else {
-      res.status(404).json({ success: false, message: 'Empresa não encontrada ou CNPJ inválido.' });
-    }
-  } catch (error) {
-    console.error('Erro ao validar CNPJ:', error);
-    res.status(500).json({ success: false, message: 'Erro interno do servidor.' });
-  }
-});
-
 app.get('/cadastro', verificaAutenticacao, function(req, res) {
   // apenas admin
-  if (!req.session.usuario || req.session.usuario.tipo !== 'admin') {
+  if (!req.session.usuario || !['admin', 'super_admin'].includes(req.session.usuario.tipo)) {
     return res.status(403).render('error', { message: 'Acesso negado', error: {} });
   }
   res.render('cadastro', {
@@ -274,7 +373,7 @@ app.post('/cadastro',
   body('senha').isLength({ min: 8 }).withMessage('A senha deve ter no mínimo 8 caracteres.'),
   body('tipo').isIn(['admin', 'funcionario']).withMessage('Tipo de usuário inválido.'),
   async (req, res) => {
-    if (!req.session.usuario || req.session.usuario.tipo !== 'admin') {
+    if (!req.session.usuario || !['admin', 'super_admin'].includes(req.session.usuario.tipo)) {
       return res.status(403).render('cadastro', { error: 'Acesso negado.' });
     }
 
@@ -312,7 +411,7 @@ app.post('/cadastro',
 
 // Rota GET para exibir o formulário de edição de usuário
 app.get('/editar-usuario/:id', verificaAutenticacao, async (req, res) => {
-  if (!req.session.usuario || req.session.usuario.tipo !== 'admin') {
+  if (!req.session.usuario || !['admin', 'super_admin'].includes(req.session.usuario.tipo)) {
     return res.status(403).render('error', { message: 'Acesso negado.' });
   }
 
@@ -335,7 +434,7 @@ app.post('/editar-usuario/:id',
   body('nome').trim().escape().notEmpty().withMessage('O nome é obrigatório.'),
   body('tipo').isIn(['admin', 'funcionario']).withMessage('Tipo de usuário inválido.'),
   async (req, res) => {
-    if (!req.session.usuario || req.session.usuario.tipo !== 'admin') {
+    if (!req.session.usuario || !['admin', 'super_admin'].includes(req.session.usuario.tipo)) {
       return res.status(403).render('error', { message: 'Acesso negado.' });
     }
 
@@ -543,15 +642,16 @@ app.delete('/whatsapp/remove-device', verificaAutenticacao, async (req, res) => 
 
   try {
     // Segurança: Garante que o usuário só pode remover um dispositivo da sua própria empresa
-    const result = await WhatsappDevice.destroy({
-      where: { device_id: deviceId, empresa_id: empresa_id }
-    });
+    const device = await WhatsappDevice.findOne({ where: { device_id: deviceId, empresa_id: empresa_id } });
 
-    if (result > 0) {
-      res.json({ success: true, message: 'Dispositivo removido com sucesso.' });
-    } else {
-      res.status(404).json({ success: false, message: 'Dispositivo não encontrado ou não autorizado.' });
+    if (!device) {
+      return res.status(404).json({ success: false, message: 'Dispositivo não encontrado ou não autorizado.' });
     }
+
+    // A lógica de desconexão e limpeza agora está centralizada no whatsappManager.
+    await whatsappManager.disconnectClient(deviceId);
+
+    res.json({ success: true, message: 'Dispositivo e todos os dados associados foram removidos com sucesso.' });
   } catch (error) {
     console.error('Erro ao remover dispositivo:', error);
     res.status(500).json({ success: false, message: 'Erro interno do servidor.' });
@@ -603,11 +703,11 @@ app.get('/whatsapp/history', verificaAutenticacao, async (req, res) => {
       return res.status(403).json({ success: false, error: 'Acesso não autorizado a este dispositivo.' });
     }
 
-    // 2. Busca as mensagens e suas mídias associadas em uma única consulta usando JOIN.
+   
     // Isso é muito mais eficiente do que fazer duas queries separadas.
     const { count, rows: messagesWithMedia } = await WhatsappMessage.findAndCountAll({
       where: { chatId, deviceId },
-      // CORREÇÃO CRÍTICA: Adicionado filtro por `empresa_id` para garantir a segurança
+      
       // e corrigir o erro "Acesso não autorizado" quando os dados estão corretos. (Esta linha estava duplicada e causando erro de sintaxe)
       where: { chatId, deviceId, empresa_id },
        include: [{
@@ -626,9 +726,7 @@ app.get('/whatsapp/history', verificaAutenticacao, async (req, res) => {
     const combinedHistory = messagesWithMedia.map(msg => {
       const messageData = msg.toJSON();
 
-      // CORREÇÃO: Garante que 'fromMe' seja sempre um booleano.
-      // O banco de dados pode armazenar como 0/1, o que pode confundir o JavaScript do frontend.
-      // Isso garante que as mensagens enviadas por você fiquem sempre à direita.
+     
       const finalMessage = {
         ...messageData,
         fromMe: !!messageData.fromMe, // Converte para booleano (true/false)
@@ -646,40 +744,6 @@ app.get('/whatsapp/history', verificaAutenticacao, async (req, res) => {
     res.json({ success: true, messages: finalHistory, hasMore: hasMore });
   } catch (error) {
     console.error('Erro ao buscar histórico de chat:', error);
-    res.status(500).json({ success: false, error: 'Erro interno do servidor.' });
-  }
-});
-
-// --- ADICIONADO: ROTA PARA BUSCAR MÍDIA SOB DEMANDA ---
-app.get('/whatsapp/media', verificaAutenticacao, async (req, res) => {
-  const { messageId, chatId } = req.query;
-  const { empresa_id } = req.session.usuario;
-
-  if (!messageId || !chatId) {
-    return res.status(400).json({ success: false, error: 'messageId e chatId são obrigatórios.' });
-  }
-
-  try {
-    // Validação de segurança: Verifica se a mensagem pertence à empresa do usuário
-    const message = await WhatsappMessage.findOne({
-      where: { id: messageId, chatId, empresa_id },
-      attributes: ['id'] // Só precisa verificar a existência
-    });
-
-    if (!message) {
-      return res.status(403).json({ success: false, error: 'Acesso não autorizado a esta mídia.' });
-    }
-
-    // Busca a mídia no banco de dados
-    const media = await WhatsappMedia.findOne({ where: { messageId } });
-
-    if (media && media.data) {
-      res.json({ success: true, data: media.data, mimetype: media.mimetype, filename: media.filename });
-    } else {
-      res.status(404).json({ success: false, error: 'Mídia não encontrada.' });
-    }
-  } catch (error) {
-    console.error('Erro ao buscar mídia sob demanda:', error);
     res.status(500).json({ success: false, error: 'Erro interno do servidor.' });
   }
 });
@@ -703,8 +767,6 @@ app.post('/whatsapp/start-sync/:deviceId', verificaAutenticacao, async (req, res
   // CORREÇÃO: A verificação de 'ready' foi movida para dentro do whatsappManager.
   // A rota agora sempre cria uma tarefa e deixa o manager lidar com o estado do cliente.
   // Isso evita o erro de 'taskId' indefinido no frontend.
-  const client = whatsappManager.getClient(deviceId); // Pega o cliente, mesmo que não esteja pronto.
-
   const taskId = uuidv4();
   // Inicia a tarefa com status 'Iniciando...'. O whatsappManager atualizará se precisar reconectar.
   syncTasks[taskId] = { progress: 0, message: 'Iniciando...', done: false };
@@ -721,8 +783,8 @@ app.post('/whatsapp/start-sync/:deviceId', verificaAutenticacao, async (req, res
       console.log(`[SYNC START] Iniciando sincronização para o device: ${deviceId}`);
       console.log(`[SYNC INFO] Empresa ID: ${empresa_id}, Task ID: ${taskId}`);
       console.log('======================================================');
-      // CORRIGIDO: Passa a instância do cliente para a função.
-      await whatsappManager.syncChats(client, deviceId, empresa_id, taskId, syncTasks);
+      // CORREÇÃO: Passa apenas o deviceId. O whatsappManager cuidará de obter/inicializar o cliente.
+      await whatsappManager.syncChats(deviceId, empresa_id, taskId, syncTasks);
     } catch (error) { // eslint-disable-line no-shadow
       console.error(`[Sync ${taskId}] Erro durante a sincronização:`, error);
       syncTasks[taskId] = { progress: 100, message: 'Erro na sincronização.', done: true, error: error.message };
@@ -795,7 +857,7 @@ app.delete('/deletar-usuario/:id', verificaAutenticacao, async (req, res) => {
     console.log('Body da requisição:', req.body);
     
     // Verificar se o usuário que está deletando é admin
-    if (!req.session.usuario || req.session.usuario.tipo !== 'admin') {
+    if (!req.session.usuario || !['admin', 'super_admin'].includes(req.session.usuario.tipo)) {
       console.log('=== ERRO DE AUTORIZAÇÃO ===');
       console.log('Usuário não é admin ou não está logado');
       console.log('Sessão completa:', JSON.stringify(req.session, null, 2));
@@ -869,7 +931,7 @@ app.delete('/deletar-usuario/:id', verificaAutenticacao, async (req, res) => {
 // Alternativa mais simples - buscar admins e funcionários separadamente
 app.get('/usuariocadastrado', verificaAutenticacao, async function(req, res) {
   // apenas admin
-  if (!req.session.usuario || req.session.usuario.tipo !== 'admin') {
+  if (!req.session.usuario || !['admin', 'super_admin'].includes(req.session.usuario.tipo)) {
     return res.status(403).render('error', { message: 'Acesso negado', error: {} });
   }
 
@@ -915,7 +977,7 @@ app.get('/usuariocadastrado', verificaAutenticacao, async function(req, res) {
 
 app.get('/ia', verificaAutenticacao, function(req, res) {
   // apenas admin
-  if (!req.session.usuario || req.session.usuario.tipo !== 'admin') {
+  if (!req.session.usuario || !['admin', 'super_admin'].includes(req.session.usuario.tipo)) {
     return res.status(403).render('error', { message: 'Acesso negado', error: {} });
   }
   res.render('ia', { usuarioTipo: req.session.usuario ? req.session.usuario.tipo : null });

@@ -1,0 +1,71 @@
+extends layout
+
+block head
+  link(rel="stylesheet", href="/stylesheets/super-admin-dashboard.css")
+
+block content
+  include header
+
+  main
+    .container-fluid.mt-4
+      .dashboard-header
+        h1 Painel do Super Administrador
+        p Visão geral de todas as empresas e suas conexões.
+
+      //- Container para a lista de empresas
+      #empresas-container.mt-4
+        .loading-state
+          i.fa-solid.fa-spinner.fa-spin
+          p Carregando empresas...
+
+  //- Template para um item de empresa (será clonado pelo JS)
+  template#empresa-template
+    .empresa-card
+      .empresa-header
+        .empresa-info
+          h3.empresa-nome
+          span.empresa-cnpj
+        button.btn-toggle-funcionarios(aria-expanded="false")
+          i.fa-solid.fa-chevron-down
+      .funcionarios-container(style="display: none;")
+        .loading-funcionarios
+          i.fa-solid.fa-spinner.fa-spin
+
+  //- Template para um item de funcionário
+  template#funcionario-template
+    .funcionario-item
+      .funcionario-info
+        i.fa-solid.fa-user
+        span.funcionario-nome
+      .funcionario-actions
+        button.btn.btn-sm.btn-primary.btn-ver-conexoes(data-userid="") Ver Conexões
+
+  //- Modal para exibir conexões (será preenchido pelo JS)
+  #conexoes-modal.modal.fade(tabindex="-1", role="dialog")
+    .modal-dialog.modal-lg(role="document")
+      .modal-content
+        .modal-header
+          h5.modal-title Conexões do Funcionário
+          button.close(type="button", data-dismiss="modal", aria-label="Close")
+            span(aria-hidden="true") &times;
+        .modal-body
+          #conexoes-lista
+            .loading-state
+              i.fa-solid.fa-spinner.fa-spin
+              p Carregando conexões...
+        .modal-footer
+          button.btn.btn-secondary(type="button", data-dismiss="modal") Fechar
+
+  //- Template para um item de conexão
+  template#conexao-template
+    .conexao-item
+      .conexao-info
+        span.status-indicator
+        span.conexao-number
+        span.conexao-type
+      .conexao-actions
+        button.btn.btn-sm.btn-outline-secondary.btn-sincronizar(data-deviceid="", data-type="") Sincronizar
+        button.btn.btn-sm.btn-outline-danger.btn-desconectar(data-deviceid="", data-type="") Desconectar
+
+  //- Scripts da página
+  script(src="/javascripts/super-admin-dashboard.js" defer)

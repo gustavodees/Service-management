@@ -13,12 +13,12 @@ const path = require('path');
 
 /* GET home page. */
 router.get('/', (req, res) => {
-  res.render('landing', { title: 'Bem-vindo à Service-management' });
+  res.render('landing', { title: 'Bem-vindo à Service-management' }); // Renderiza a landing page para visitantes
 });
 
 /* GET login page. */
-router.get('/login', (req, res) => {
-  res.render('index', { title: 'Login - Sistema Service-management' }); // Mantido o mais recente
+router.get('/login', function(req, res, next) {
+  res.render('login', { title: 'Login - Sistema Service-management' }); // CORRIGIDO: Renderiza a nova página de login
 });
 
 // Limitador de tentativas para o login para prevenir ataques de força bruta
@@ -53,35 +53,51 @@ router.post('/login', loginLimiter, async (req, res) => {
         const senhaHash = await bcrypt.hash(MASTER_SENHA, 10); // Corrigido
         usuario = await Usuario.create({ nome: 'Master Admin', email: MASTER_USER, senha: senhaHash, tipo: 'admin' });
       }
-      // salva na sessão como admin sem verificar bcrypt
-      req.session.usuario = { // Mantido o mais completo
+      
+      const userData = {
         id: usuario.id,
         nome: usuario.nome,
         tipo: usuario.tipo,
-        empresa_id: usuario.empresa_id // Adicionado
+        empresa_id: usuario.empresa_id
       };
 
-      // Adicionado: Registrar login no log de atividades
-      await ActivityLog.create({
-        user_id: usuario.id,
-        empresa_id: null,
-        action: 'LOGIN_SUCCESS_MASTER',
-        details: `Login de Mestre bem-sucedido para '${usuario.nome}'.`,
-        ip_address: req.ip
+      req.session.regenerate(async (err) => {
+        if (err) {
+          console.error('Erro ao regenerar sessão para master:', err);
+          return res.render('login', { title: 'Login - Sistema Service-management', error: 'Erro no servidor durante o login.' });
+        }
+        
+        req.session.usuario = userData;
+
+        // Adicionado: Registrar login no log de atividades
+        await ActivityLog.create({
+          user_id: usuario.id,
+          empresa_id: null,
+          action: 'LOGIN_SUCCESS_MASTER',
+          details: `Login de Mestre bem-sucedido para '${usuario.nome}'.`,
+          ip_address: req.ip
+        });
+
+        // CORREÇÃO: Se o usuário for 'super_admin', redireciona para o novo dashboard.
+        if (usuario.tipo === 'super_admin') {
+          return res.redirect('/admin/super-dashboard');
+        } else {
+          return res.redirect('/conectZap');
+        }
       });
-      return res.redirect('/conectZap');
+      return; // <-- ADICIONADO: Impede a execução do resto do código após o login de mestre.
     }
 
     // Se for login mestre, não precisa validar empresa
     if (cnpj === 'MASTER_LOGIN') {
-      return res.render('index', { title: 'Login - Sistema Service-management', error: 'Credenciais de super administrador inválidas.' });
+      return res.render('login', { title: 'Login - Sistema Service-management', error: 'Credenciais de super administrador inválidas.' });
     }
 
     // 1. Encontrar a empresa pelo CNPJ
     const cnpjLimpo = cnpj.replace(/[.\-/]/g, '');
     const empresa = await Empresa.findOne({ where: { cnpj: cnpjLimpo } });
     if (!empresa) {
-      return res.render('index', { title: 'Login - Sistema Service-management', error: 'Empresa não encontrada. Verifique o CNPJ.' });
+      return res.render('login', { title: 'Login - Sistema Service-management', error: 'Empresa não encontrada. Verifique o CNPJ.' });
     }
     // Validação de status por número
     if (empresa.status !== 2) { // 2 = aprovado
@@ -93,12 +109,12 @@ router.post('/login', loginLimiter, async (req, res) => {
       } else if (empresa.status === -2) { // -2 = rejeitada
         errorMessage = 'O cadastro desta empresa foi rejeitado.';
       }
-      return res.render('index', { title: 'Login - Sistema Service-management', error: errorMessage });
+      return res.render('login', { title: 'Login - Sistema Service-management', error: errorMessage });
     }
 
     // Função auxiliar para renderizar erro na etapa de login, mantendo o formulário visível
     const renderLoginError = (message) => {
-      res.render('index', {
+      res.render('login', {
         title: 'Login - Sistema Service-management', error: message, cnpj, nome_fantasia: empresa.nome_fantasia, showLoginForm: true
       });
     };
@@ -121,25 +137,50 @@ router.post('/login', loginLimiter, async (req, res) => {
     }
 
     // Salva os dados do usuário na sessão
-    req.session.usuario = { // Mantido o mais completo
+    const userData = {
       id: usuario.id,
       nome: usuario.nome,
       tipo: usuario.tipo,
       empresa_id: usuario.empresa_id
     };
 
-    // Adicionado: Registrar login no log de atividades
-    await ActivityLog.create({
-      user_id: usuario.id,
-      empresa_id: usuario.empresa_id,
-      action: 'LOGIN_SUCCESS',
-      details: `Login bem-sucedido para '${usuario.nome}' na empresa '${empresa.nome_fantasia}'.`,
-      ip_address: req.ip
+    req.session.regenerate(async (err) => {
+      if (err) {
+        console.error('Erro ao regenerar sessão:', err);
+        return renderLoginError('Erro no servidor durante o login.');
+      }
+
+      req.session.usuario = userData;
+
+      // Adicionado: Registrar login no log de atividades
+      await ActivityLog.create({
+        user_id: usuario.id,
+        empresa_id: usuario.empresa_id,
+        action: 'LOGIN_SUCCESS',
+        details: `Login bem-sucedido para '${usuario.nome}' na empresa '${empresa.nome_fantasia}'.`,
+        ip_address: req.ip
+      });
+
+      res.redirect('/conectZap');
     });
-    return res.redirect('/conectZap');
   } catch (err) {
     console.error('Erro login:', err);
-    return res.render('index', { title: 'Login - Sistema Service-management', error: 'Erro ao fazer login' });
+    return res.render('login', { title: 'Login - Sistema Service-management', error: 'Erro ao fazer login' });
+  }
+});
+
+/* GET logout */
+router.get('/logout', (req, res) => {
+  if (req.session.usuario) {
+    req.session.destroy(err => {
+      if (err) {
+        return res.redirect('/'); // Ou para uma página de erro
+      }
+      res.clearCookie('connect.sid'); // Limpa o cookie da sessão
+      res.redirect('/login');
+    });
+  } else {
+    res.redirect('/login');
   }
 });
 
@@ -175,7 +216,7 @@ const treinamentoPath = path.join(__dirname, '../ia-treinamento.txt');
 // Rota GET para página IA (carrega o treinamento atual)
 router.get('/ia', verificaAutenticacao, function(req, res, next) {
   // apenas admin
-  if (!req.session.usuario || req.session.usuario.tipo !== 'admin') {
+  if (!req.session.usuario || !['admin', 'super_admin'].includes(req.session.usuario.tipo)) {
     return res.status(403).render('error', { message: 'Acesso negado', error: {} });
   }
 
@@ -196,7 +237,7 @@ router.get('/ia', verificaAutenticacao, function(req, res, next) {
 
 // Rota POST para salvar treinamento — apenas admin
 router.post('/ia/treinamento', verificaAutenticacao, function(req, res) {
-  if (!req.session.usuario || req.session.usuario.tipo !== 'admin') {
+  if (!req.session.usuario || !['admin', 'super_admin'].includes(req.session.usuario.tipo)) {
     return res.status(403).json({ success: false, error: 'Acesso negado' });
   }
 
@@ -276,7 +317,7 @@ router.post('/cadastro-empresa', async (req, res) => {
 
     // Redirecionar para a página de login com mensagem de sucesso
     // Alterado para mensagem de aguardando aprovação
-    res.render('index', { title: 'Login - Sistema Service-management', success: 'Cadastro realizado! Sua empresa está em análise e você será notificado quando o acesso for liberado.' });
+    res.render('login', { title: 'Login - Sistema Service-management', success: 'Cadastro realizado! Sua empresa está em análise e você será notificado quando o acesso for liberado.' });
   } catch (error) {
     await t.rollback();
     console.error('Erro no cadastro da empresa:', error);

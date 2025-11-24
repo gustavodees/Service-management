@@ -27,6 +27,7 @@ block content
         .conversation-tabs
           button#tab-contacts.tab-btn.active Contatos
           button#tab-groups.tab-btn Grupos
+          button#tab-archived.tab-btn Arquivados
         #conversations-list
           //- Modificado: Estado inicial de carregamento.
           //- O script atendimento-ws.js irá substituir isso pela lista de contatos ou por uma mensagem de "Nenhum contato encontrado".
@@ -41,6 +42,12 @@ block content
         //- Cabeçalho do chat, atualizado pelo JS
         .chat-header
           h3#current-chat-title Selecione uma conversa
+
+        //- ADICIONADO: Barra de progresso para sincronização
+        .sync-progress-bar#sync-progress-container(style="display: none;")
+          .sync-progress-text#sync-progress-text Sincronizando...
+          .progress-bar-outer
+            .progress-bar-inner#sync-progress-bar
 
         //- Área de mensagens
         #chat-messages
@@ -66,11 +73,11 @@ block content
           button.btn-icon#audio-record-btn(title="Gravar áudio")
             i.fa-solid.fa-microphone
           button.btn-icon#file-clip-btn(title="Anexar arquivo")
-            i.fa-solid fa-paperclip
+            i.fa-solid.fa-paperclip
           input#file-input(type="file", hidden)
           textarea#message-input(rows="1", placeholder="Digite uma mensagem...", disabled)
           button.btn-icon#send-message-btn(title="Enviar mensagem", disabled)
-            i.fa-solid fa-paper-plane
+            i.fa-solid.fa-paper-plane
 
       //- ==========================================================
       //- Coluna 3: Painel de Detalhes (Direita)

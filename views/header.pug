@@ -36,9 +36,18 @@ header(class="sidebar-menu")
             span.nav-text Gráficos
         
         //- Bloco de Menus de Administrador
-        if usuarioTipo === 'admin'
-          //- Menus exclusivos para o Admin MESTRE (sem empresa)
-          if !usuarioEmpresaId
+        //- CORRIGIDO: Exibe menus para 'admin' e 'super_admin'
+        if usuarioTipo === 'admin' || usuarioTipo === 'super_admin'
+          //- Menus exclusivos para o Super Admin e Admin MESTRE (sem empresa)
+          if usuarioTipo === 'super_admin' || (usuarioTipo === 'admin' && !usuarioEmpresaId)
+            //- ADICIONADO: Link para o dashboard do Super Admin
+            if usuarioTipo === 'super_admin'
+              li.nav-item(data-menu="super-dashboard", class=(title === 'Painel Geral' ? 'active' : ''))
+                a(href="/admin/super-dashboard", title="Painel Geral do Administrador")
+                  i.icon.fas.fa-crown
+                  span.nav-text Painel Geral
+
+            //- Link de aprovações
             li.nav-item(data-menu="aprovacoes", class=(title === 'Aprovar Empresas' ? 'active' : ''))
               a(href="/admin/aprovar-empresas", title="Aprovações Pendentes")
                 i.icon.fas.fa-building-user
@@ -48,7 +57,7 @@ header(class="sidebar-menu")
                 i.icon.fas.fa-briefcase
                 span.nav-text Gerenciar
           
-          //- Menus para TODOS os admins (Mestre e de Empresa)
+          //- Menus para TODOS os admins (Mestre, Super Admin e de Empresa)
           li.nav-item(data-menu="cadastrar", class=(title === 'Cadastro de Usuário' ? 'active' : ''))
             a(href="/cadastro", title="Cadastro de Usuário")
               i.icon.fas.fa-user-plus

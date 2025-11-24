@@ -1,0 +1,117 @@
+doctype html
+html(lang="pt-BR")
+  head
+    title= title
+    meta(charset="UTF-8")
+    meta(name="viewport", content="width=device-width, initial-scale=1.0")
+    link(rel='stylesheet', href='/stylesheets/login.css')
+    link(rel="stylesheet", href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css")
+
+  body.login-page
+    .login-container
+      .login-card
+        //- Etapa 1: Validação do CNPJ (visível por padrão)
+        div#etapa-cnpj
+          h1 Acessar sua Conta
+          p Informe o CNPJ da sua empresa para continuar.
+
+          //- Mensagens de erro/sucesso para a etapa 1
+          div#mensagem-cnpj.alert(style="display: none;")
+          if success
+            .alert.alert-success= success
+
+          form#form-cnpj
+            .form-group
+              label(for='cnpj') CNPJ da Empresa
+              input#cnpj.form-control(type="text", name="cnpj", placeholder="00.000.000/0001-00", required, autofocus)
+            button#btn-validar-cnpj.btn-login(type="submit")
+              span Validar
+              i.fas.fa-spinner.fa-spin(style="display: none; margin-left: 8px;")
+
+          .mt-3.text-center(style="margin-top: 1rem; font-size: 0.9rem;")
+            a(href="/cadastro-empresa", style="color: #198754; text-decoration: none;") Não tem uma conta? Cadastre sua empresa
+
+        //- Etapa 2: Login com Email/Senha (oculto por padrão)
+        div#etapa-login(style="display: none;")
+          h1#nome-empresa-login Olá!
+          p#subtitulo-login Faça login para acessar o painel.
+
+          //- Mensagens de erro para a etapa 2
+          if error
+            .alert.alert-danger= error
+
+          form(method='POST', action='/login')
+            //- Campo CNPJ oculto para ser enviado junto com o formulário de login
+            input#cnpj-hidden(type="hidden", name="cnpj")
+
+            .form-group
+              label(for='email') Email
+              input#email.form-control(type='email', name='email', required)
+
+            .form-group
+              label(for='senha') Senha
+              input#senha.form-control(type='password', name='senha', required)
+
+            button.btn-login(type='submit') Entrar
+
+          .mt-3.text-center(style="margin-top: 1rem; font-size: 0.9rem;")
+            a#voltar-cnpj(href="#", style="color: #198754; text-decoration: none;") Voltar
+
+    script.
+      document.addEventListener('DOMContentLoaded', function() {
+        const formCnpj = document.getElementById('form-cnpj');
+        const btnValidar = document.getElementById('btn-validar-cnpj');
+        const mensagemCnpj = document.getElementById('mensagem-cnpj');
+        const etapaCnpj = document.getElementById('etapa-cnpj');
+        const etapaLogin = document.getElementById('etapa-login');
+        const nomeEmpresaLogin = document.getElementById('nome-empresa-login');
+        const cnpjHiddenInput = document.getElementById('cnpj-hidden');
+        const voltarBtn = document.getElementById('voltar-cnpj');
+
+        formCnpj.addEventListener('submit', async function(e) {
+          e.preventDefault();
+          const cnpjInput = document.getElementById('cnpj');
+          const cnpj = cnpjInput.value;
+          const spinner = btnValidar.querySelector('i');
+
+          btnValidar.disabled = true;
+          spinner.style.display = 'inline-block';
+          mensagemCnpj.style.display = 'none';
+
+          try {
+            const response = await fetch('/api/validar-cnpj', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ cnpj })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+              etapaCnpj.style.display = 'none';
+              etapaLogin.style.display = 'block';
+              nomeEmpresaLogin.textContent = data.nome_fantasia || 'Bem-vindo!';
+              cnpjHiddenInput.value = cnpj;
+              document.getElementById('email').focus();
+            } else {
+              mensagemCnpj.textContent = data.message || 'Erro ao validar CNPJ.';
+              mensagemCnpj.className = 'alert alert-danger';
+              mensagemCnpj.style.display = 'block';
+            }
+          } catch (error) {
+            mensagemCnpj.textContent = 'Erro de conexão. Tente novamente.';
+            mensagemCnpj.className = 'alert alert-danger';
+            mensagemCnpj.style.display = 'block';
+          } finally {
+            btnValidar.disabled = false;
+            spinner.style.display = 'none';
+          }
+        });
+
+        voltarBtn.addEventListener('click', function(e) {
+          e.preventDefault();
+          etapaLogin.style.display = 'none';
+          etapaCnpj.style.display = 'block';
+          document.getElementById('cnpj').focus();
+        });
+      });

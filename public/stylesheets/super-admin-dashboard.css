@@ -1,0 +1,112 @@
+/* Estilos para o Dashboard do Super Admin */
+.dashboard-header {
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.empresa-card {
+  background-color: #fff;
+  border: 1px solid #e9ecef;
+  border-radius: 0.5rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  transition: box-shadow 0.2s ease;
+}
+
+.empresa-card:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+.empresa-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  cursor: pointer;
+}
+
+.empresa-info .empresa-nome {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #343a40;
+}
+
+.empresa-info .empresa-cnpj {
+  font-size: 0.9rem;
+  color: #6c757d;
+}
+
+.btn-toggle-funcionarios {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  color: #6c757d;
+  transition: transform 0.3s ease;
+}
+
+.btn-toggle-funcionarios[aria-expanded="true"] {
+  transform: rotate(180deg);
+}
+
+.funcionarios-container {
+  padding: 0 1.5rem 1.5rem;
+  background-color: #f8f9fa;
+  border-top: 1px solid #e9ecef;
+}
+
+.funcionario-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.funcionario-item:last-child {
+  border-bottom: none;
+}
+
+.funcionario-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-weight: 500;
+}
+
+/* Estilos para o Modal de Conexões */
+.conexao-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  border-radius: 0.3rem;
+  background-color: #f8f9fa;
+  margin-bottom: 0.5rem;
+}
+
+.status-indicator {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 10px;
+}
+
+.status-indicator.online {
+  background-color: #28a745;
+  box-shadow: 0 0 6px #28a745;
+}
+
+.status-indicator.offline {
+  background-color: #dc3545;
+}
+
+.conexao-type {
+  font-size: 0.8rem;
+  background-color: #e9ecef;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 10px;
+  text-transform: uppercase;
+}

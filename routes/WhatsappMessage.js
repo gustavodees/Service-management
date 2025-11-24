@@ -14,7 +14,7 @@ const WhatsappMessage = sequelize.define('WhatsappMessage', {
   type: { type: DataTypes.STRING, allowNull: true },
   mimetype: { type: DataTypes.STRING, allowNull: true },
   filename: { type: DataTypes.STRING, allowNull: true },
-  data: { type: DataTypes.TEXT, allowNull: true }, // base64 (ideal ficar null em whatsapp_messages para mídias)
+  data: { type: DataTypes.TEXT('long'), allowNull: true }, // base64 (ideal ficar null em whatsapp_messages para mídias)
   timestamp: { type: DataTypes.BIGINT, allowNull: true }
 }, {
   tableName: 'whatsapp_messages',

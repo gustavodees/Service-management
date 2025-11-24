@@ -225,4 +225,40 @@ block content
             }
           });
         });
+
+        // --- ADICIONADO: Lógica para WebSocket ---
+        // Conecta ao WebSocket para receber atualizações em tempo real
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const ws = new WebSocket(`${wsProtocol}//${window.location.host}`);
+
+        ws.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+
+            // Ouve o evento de início de sincronização automática
+            if (data.type === 'sync-started' && data.taskId) {
+                const deviceId = data.deviceId;
+                console.log(`Sincronização automática iniciada para ${deviceId} com taskId ${data.taskId}`);
+
+                const progressContainer = document.getElementById(`progress-container-${deviceId}`);
+                const progressBar = document.getElementById(`progress-bar-${deviceId}`);
+                const progressText = document.getElementById(`progress-text-${deviceId}`);
+
+                if (progressContainer) {
+                    progressContainer.style.display = 'block';
+                    progressBar.style.width = '0%';
+                    progressText.textContent = '0%';
+
+                    // Inicia o monitoramento do progresso para esta tarefa
+                    monitorSyncProgress(data.taskId, deviceId);
+                }
+            }
+
+            // Outros eventos de WebSocket podem ser tratados aqui (ex: status-change)
+            if (data.type === 'whatsapp-connected' || data.type === 'disconnected') {
+                // Recarrega a página para refletir o novo status do dispositivo
+                // É uma abordagem simples mas eficaz.
+                console.log(`Status do dispositivo ${data.deviceId} alterado. Recarregando...`);
+                window.location.reload();
+            }
+        };
       });

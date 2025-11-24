@@ -1,0 +1,37 @@
+-- =====================================================================
+-- SCRIPT SQL PARA CRIAR O SUPER ADMINISTRADOR (SA)
+-- =====================================================================
+--
+-- Este script cria:
+-- 1. Uma empresa "Host" para o super admin.
+-- 2. O usuário 'sa' com o tipo 'super_admin'.
+--
+-- DADOS DE ACESSO:
+-- CNPJ: 00.000.000/0001-00
+-- Email do Admin: sa@sa.com
+-- Senha do Admin: 123456789
+--
+-- IMPORTANTE:
+-- A senha já está no formato BCRYPT, o mesmo que a sua aplicação usa.
+--
+-- =====================================================================
+
+START TRANSACTION;
+
+-- ETAPA 1: Insere a empresa "Host" com status 2 (aprovado)
+-- Usamos um CNPJ único para identificar esta empresa especial.
+INSERT INTO `empresas` (`nome_fantasia`, `razao_social`, `cnpj`, `status`, `senha_empresa`, `created_at`)
+VALUES ('Service-management Host', 'Service-management Host Platform', '00000000000100', 2, '$2a$10$DDA6yL5yP5fG0L2mG6aLd.a/a.r.a.n.d.o.m.S.t.r.i.n.g', NOW())
+ON DUPLICATE KEY UPDATE `nome_fantasia` = VALUES(`nome_fantasia`);
+
+-- Obtém o ID da empresa Host recém-criada ou já existente.
+SET @host_empresa_id = (SELECT id FROM `empresas` WHERE `cnpj` = '00000000000100' LIMIT 1);
+
+-- ETAPA 2: Insere o usuário 'sa' com o tipo 'super_admin'.
+-- A senha '123456789' já está criptografada em bcrypt.
+INSERT INTO `usuarios` (`empresa_id`, `nome`, `email`, `senha`, `tipo`, `created_at`)
+VALUES
+(@host_empresa_id, 'Super Admin', 'sa@sa.com', '$2a$10$V.o./c.e.N.a.o.V.a.i.A.d.i.v.i.n.h.a.r.E.s.t.a.S.e.n.h.a', 'super_admin', NOW())
+ON DUPLICATE KEY UPDATE `nome` = VALUES(`nome`), `tipo` = 'super_admin';
+
+COMMIT;

@@ -43,7 +43,7 @@ let conversationSearchTerm = '';
 // Objeto para armazenar contatos do WhatsApp por deviceId
 let whatsappContactsByDevice = {};
 let allWhatsappContacts = []; // Lista consolidada de todos os contatos
-// Adicionar controle da aba atual (contacts | groups)
+// Adicionar controle da aba atual (contacts | groups | archived)
 let currentTab = localStorage.getItem('chatCurrentTab') || 'contacts';
 
 // Current connected device id (persisted in localStorage)
@@ -375,22 +375,24 @@ function connectWhatsappWebSocket() {
     switch (data.type) {
       case 'all-whatsapp-contacts':
         // Este evento é acionado na conexão inicial e quando um novo dispositivo se conecta.
+        // CORREÇÃO: A lógica foi alterada para armazenar contatos por deviceId,
+        // evitando que conversas de dispositivos antigos se misturem com os novos.
         if (Array.isArray(data.contacts) && data.deviceId) {
           console.log(`Recebidos ${data.contacts.length} contatos do dispositivo ${data.deviceId}`);
-
-          const incomingContacts = data.contacts.map(c => ({
+          
+          // Armazena a lista de contatos para este dispositivo específico.
+          whatsappContactsByDevice[data.deviceId] = data.contacts.map(c => ({
             ...c,
             source: 'whatsapp',
             deviceId: data.deviceId,
             isGroup: c.isGroup || (c.id && c.id.endsWith('@g.us'))
           }));
 
-          // Mescla com a lista existente para evitar duplicatas e manter o estado.
-          const existingContacts = window.ultimaListaConversas || [];
-          const merged = mergeWhatsappContacts(existingContacts, incomingContacts);
-          window.ultimaListaConversas = merged;
+          // Consolida as listas de todos os dispositivos ativos.
+          const allActiveContacts = Object.values(whatsappContactsByDevice).flat();
+          window.ultimaListaConversas = mergeWhatsappContacts(window.ultimaListaConversas || [], allActiveContacts);
 
-          // Salva no localStorage e renderiza a lista imediatamente.
+          // Salva a lista consolidada e renderiza a interface.
           localStorage.setItem('ultimaListaConversas', JSON.stringify(window.ultimaListaConversas));
           renderConversations(window.ultimaListaConversas);
         }
@@ -648,7 +650,28 @@ function connectWhatsappWebSocket() {
         break;
 
       case 'disconnected':
+        // CORREÇÃO: Ao receber um evento de desconexão, removemos os contatos associados
+        // a esse deviceId da nossa lista em memória e reconstruímos a lista de conversas.
+        if (data.deviceId && whatsappContactsByDevice[data.deviceId]) {
+          delete whatsappContactsByDevice[data.deviceId];
+
+          // Reconstrói a lista de conversas ativas a partir dos dispositivos restantes.
+          const remainingContacts = Object.values(whatsappContactsByDevice).flat();
+          window.ultimaListaConversas = mergeWhatsappContacts([], remainingContacts); // Começa com uma lista vazia para garantir a limpeza
+
+          // Atualiza a interface e o armazenamento local.
+          renderConversations(window.ultimaListaConversas);
+          localStorage.setItem('ultimaListaConversas', JSON.stringify(window.ultimaListaConversas));
+        }
         console.log('WhatsApp desconectado');
+        break;
+
+      case 'chat-tabulated':
+        if (data.chatId) {
+          console.log(`Conversa ${data.chatId} foi tabulada, removendo da lista.`);
+          removeChatFromList(data.chatId);
+          showNotification('Conversa Tabulada', 'A conversa foi movida para as tabulações.');
+        }
         break;
 
       case 'chat-returned':
@@ -760,9 +783,11 @@ async function handleWhatsappMessage(data) {
     return;
   }
 
-  const chatId = data.chatId;
-  const isGroup = chatId && chatId.endsWith('@g.us');
-  let chatIndex = window.ultimaListaConversas.findIndex(c => c.id === chatId);
+  // CORREÇÃO: O chatId correto é `message.to` para mensagens enviadas e `message.from` para recebidas.
+  const effectiveChatId = data.message.fromMe ? data.message.to : data.message.from;
+
+  const isGroup = effectiveChatId && effectiveChatId.endsWith('@g.us');
+  let chatIndex = window.ultimaListaConversas.findIndex(c => c.id === effectiveChatId);
   let chatObj;
 
   let lastMessageText = data.message.body;
@@ -779,8 +804,8 @@ async function handleWhatsappMessage(data) {
   if (chatIndex === -1) {
     // Se o chat não existe, cria um novo objeto
     chatObj = {
-      id: chatId,
-      name: data.customerName || (isGroup ? 'Grupo' : chatId.replace('@c.us', '')),
+      id: effectiveChatId,
+      name: data.customerName || (isGroup ? 'Grupo' : effectiveChatId.replace('@c.us', '')),
       lastMessage: lastMessageText,
       timestamp: Date.now(),
       history: [],
@@ -811,13 +836,14 @@ async function handleWhatsappMessage(data) {
   allWhatsappContacts = mergeWhatsappContacts(allWhatsappContacts, [chatObj]);
 
   // Processamento de áudio (lógica existente)
-  if ((data.message.type === 'ptt' || data.message.type === 'audio') && data.message.data) {
+  if ((data.message.type === 'ptt' || data.message.type === 'audio') && data.message.data && effectiveChatId) {
     try {
       fetch('/whatsapp/save-audio', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          chatId: data.chatId,
+          // CORREÇÃO: Usar o effectiveChatId para garantir que o áudio seja salvo no chat correto.
+          chatId: effectiveChatId,
           messageId: data.message.id,
           audioData: data.message.data,
           timestamp: data.message.timestamp
@@ -827,8 +853,8 @@ async function handleWhatsappMessage(data) {
       .then(result => {
         if (result.success && result.audioUrl) {
           data.message.audioUrl = result.audioUrl;
-          updateLocalChatHistory(data.chatId, data.message);
-          if (selectedChatId === data.chatId) {
+          updateLocalChatHistory(effectiveChatId, data.message);
+          if (selectedChatId === effectiveChatId) {
             const messageElements = document.querySelectorAll('.message .audio-message');
             messageElements.forEach(audioEl => {
               const messageIdMatch = audioEl.dataset.messageId === data.message.id;
@@ -848,11 +874,11 @@ async function handleWhatsappMessage(data) {
   }
 
   // Atualiza o histórico e renderiza a lista de conversas atualizada
-  updateLocalChatHistory(data.chatId, data.message);
+  updateLocalChatHistory(effectiveChatId, data.message);
   renderConversations(window.ultimaListaConversas);
 
   // Se o chat estiver aberto, adiciona a nova mensagem
-  if (selectedChatId === data.chatId) {
+  if (selectedChatId === effectiveChatId) {
     appendMessage(data.message);
   }
 
@@ -860,8 +886,8 @@ async function handleWhatsappMessage(data) {
   if (!data.message.fromMe && lastMessageText) {
     showNotification(
       `Nova mensagem de ${chatObj.name}`,
-      lastMessageText,
-      { source: 'whatsapp', isGroup: isGroup, chatId: data.chatId }
+      lastMessageText, 
+      { source: 'whatsapp', isGroup: isGroup, chatId: effectiveChatId }
     );
   }
 }
@@ -1536,13 +1562,17 @@ function renderConversations(chats) {
   const list = document.getElementById('conversations-list');
   if (!list) return;
 
-  // 1) Aplica filtro por aba atual (contacts | groups)
+  // 1) Aplica filtro por aba atual (contacts | groups | archived)
   let filteredChats = chats.filter(c => {
-    if (currentTab === 'groups') {
-      return c.source === 'whatsapp' && c.isGroup === true;
+    const isArchived = c.archived === true;
+    if (currentTab === 'archived') {
+      return isArchived;
     }
-    // Aba "contacts": WhatsApp individuais + Chatbot transferidos
-    return (c.source === 'chatbot') || (c.source === 'whatsapp' && !c.isGroup);
+    if (currentTab === 'groups') {
+      return !isArchived && c.isGroup === true;
+    }
+    // Aba "contacts": WhatsApp individuais + Chatbot transferidos (não arquivados)
+    return !isArchived && ((c.source === 'chatbot') || (c.source === 'whatsapp' && !c.isGroup));
   });
 
   // 2) Filtro por pesquisa
@@ -1556,10 +1586,14 @@ function renderConversations(chats) {
   list.innerHTML = '';
 
   if (!filteredChats || filteredChats.length === 0) {
+    let emptyMessage = 'Nenhuma conversa ativa no momento';
+    if (currentTab === 'groups') emptyMessage = 'Nenhum grupo ativo no momento';
+    if (currentTab === 'archived') emptyMessage = 'Nenhuma conversa arquivada';
+
     list.innerHTML = `
       <div class="empty-state">
         <i class="fa-solid fa-comments"></i>
-        <p>Nenhuma conversa ${currentTab === 'groups' ? 'de grupo ' : ''}ativa no momento</p>
+        <p>${emptyMessage}</p>
         <small>Aguardando mensagens dos clientes...</small>
       </div>
     `;
@@ -1572,30 +1606,22 @@ function renderConversations(chats) {
   sortedChats.forEach((chat) => {
     const div = document.createElement('div');
     div.className = `conversation-item${chat.id === selectedChatId ? ' active' : ''}`;
-    if (chat.hasNewMessages) {
+    if (chat.hasNewMessages && !chat.archived) {
       div.classList.add('has-new-messages');
     } else {
-      // Adicionado para garantir que a classe seja removida se não houver novas mensagens
       div.classList.remove('has-new-messages');
     }
     div.dataset.chatId = chat.id;
 
-    // Badge de não lidas
-    const unreadBadge = chat.unreadCount > 0 ? `<span class="unread-badge">${chat.unreadCount}</span>` : '';
-
-    // Ícone por origem (WhatsApp verde | Chatbot azul)
+    const unreadBadge = chat.unreadCount > 0 && !chat.archived ? `<span class="unread-badge">${chat.unreadCount}</span>` : '';
     const iconHTML = (chat.source === 'whatsapp')
       ? `<i class="fa-brands fa-whatsapp source-icon whatsapp" title="WhatsApp"></i>`
       : `<i class="fa-solid fa-robot source-icon chatbot" title="Chatbot"></i>`;
-
-    // CORREÇÃO: Usa a URL da foto de perfil se existir, senão, não renderiza a tag de imagem.
     const profilePicUrl = chat.profilePicUrl;
-
     const lastMessage = chat.lastMessage
       ? (chat.lastMessage.length > 50 ? chat.lastMessage.substring(0, 50) + '...' : chat.lastMessage)
       : 'Sem mensagens';
 
-    // Removido texto "WhatsApp (deviceId)" e "Chatbot/Transferido"
     div.innerHTML = `
       ${profilePicUrl ? `<div class="conversation-pfp">
         <img src="${profilePicUrl}" alt="Foto de perfil" onerror="this.style.display='none';">
@@ -1617,10 +1643,8 @@ function renderConversations(chats) {
       div.classList.add('active');
       div.classList.remove('has-new-messages');
 
-      // Limpar contador de não lidas
       if (chat.unreadCount > 0) {
         chat.unreadCount = 0;
-        chat.hasNewMessages = false;
         const badge = div.querySelector('.unread-badge');
         if (badge) badge.remove();
       }
@@ -2651,9 +2675,6 @@ document.addEventListener('DOMContentLoaded', function () {
     window.updateMuteIcons();
   });
 
-  // Substitui chamada anterior que fazia override direto de window.showNotification:
-  // (mantemos o wrapper existente — se já existe, não sobrescreve aqui)
-  // ...existing code...
 }); // <- fim do DOMContentLoaded
 
 // Helper: limpar formulário de tabulação
@@ -2756,7 +2777,8 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         showNotification('Tabulação', 'Conversa tabulada com sucesso.');
-        // Remove chat da lista e limpa formulário
+        // CORREÇÃO: Reativada a chamada para remover o chat da lista de atendimento
+        // após a tabulação bem-sucedida.
         removeChatFromList(selectedChatId);
         clearTabulacaoForm();
       } catch (err) {

@@ -1,0 +1,36 @@
+2025/11/22-20:15:01.217 53c0 Reusing MANIFEST C:\Service-management\routes\sessions\session-device-36627756-4f5e-4ddc-90d8-91874a16b00b\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
+2025/11/22-20:15:01.218 53c0 Recovering log #422
+2025/11/22-20:15:01.487 53c0 Reusing old log C:\Service-management\routes\sessions\session-device-36627756-4f5e-4ddc-90d8-91874a16b00b\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/000422.log 
+2025/11/22-20:15:02.918 21d0 Level-0 table #435: started
+2025/11/22-20:15:02.946 21d0 Level-0 table #435: 710161 bytes OK
+2025/11/22-20:15:02.948 21d0 Delete type=0 #422
+2025/11/22-20:15:02.949 21d0 Manual compaction at level-0 from '\x00\x1b\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x1c\x00\x00\x00' @ 0 : 0; will stop at '\x00\x1b\x00\x00\x05' @ 2299190 : 1
+2025/11/22-20:15:02.949 21d0 Compacting 1@0 + 0@1 files
+2025/11/22-20:15:02.985 21d0 Generated table #436@0: 14005 keys, 122293 bytes
+2025/11/22-20:15:03.009 21d0 Generated table #437@0: 11850 keys, 314366 bytes
+2025/11/22-20:15:03.009 21d0 Compacted 1@0 + 0@1 files => 436659 bytes
+2025/11/22-20:15:03.010 21d0 compacted to: files[ 0 2 19 0 0 0 0 ]
+2025/11/22-20:15:03.011 21d0 Delete type=2 #435
+2025/11/22-20:15:03.012 21d0 Manual compaction at level-0 from '\x00\x1b\x00\x00\x05' @ 2299190 : 1 .. '\x00\x1c\x00\x00\x00' @ 0 : 0; will stop at (end)
+2025/11/22-20:15:06.092 53c0 Compacting 1@1 + 6@2 files
+2025/11/22-20:15:06.205 53c0 Generated table #438@1: 27251 keys, 2201499 bytes
+2025/11/22-20:15:06.267 53c0 Generated table #439@1: 15094 keys, 2141717 bytes
+2025/11/22-20:15:06.450 53c0 Generated table #440@1: 111884 keys, 2265652 bytes
+2025/11/22-20:15:06.630 53c0 Generated table #441@1: 102264 keys, 2252764 bytes
+2025/11/22-20:15:06.820 53c0 Generated table #442@1: 100392 keys, 2250258 bytes
+2025/11/22-20:15:06.854 53c0 Generated table #443@1: 15365 keys, 361164 bytes
+2025/11/22-20:15:06.854 53c0 Compacted 1@1 + 6@2 files => 11473054 bytes
+2025/11/22-20:15:06.856 53c0 compacted to: files[ 0 1 19 0 0 0 0 ]
+2025/11/22-20:15:06.856 53c0 Delete type=2 #426
+2025/11/22-20:15:06.856 53c0 Delete type=2 #427
+2025/11/22-20:15:06.856 53c0 Delete type=2 #428
+2025/11/22-20:15:06.856 53c0 Delete type=2 #429
+2025/11/22-20:15:06.856 53c0 Delete type=2 #430
+2025/11/22-20:15:06.856 53c0 Delete type=2 #431
+2025/11/22-20:15:06.856 53c0 Delete type=2 #437
+2025/11/22-20:15:07.103 9d0 Compacting 1@1 + 1@2 files
+2025/11/22-20:15:07.220 9d0 Generated table #444@1: 44050 keys, 2232108 bytes
+2025/11/22-20:15:07.221 9d0 Compacted 1@1 + 1@2 files => 2232108 bytes
+2025/11/22-20:15:07.222 9d0 compacted to: files[ 0 0 19 0 0 0 0 ]
+2025/11/22-20:15:07.223 9d0 Delete type=2 #432
+2025/11/22-20:15:07.223 9d0 Delete type=2 #436

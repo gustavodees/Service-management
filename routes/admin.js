@@ -14,6 +14,7 @@ const WhatsappMessage = require('./WhatsappMessage');
 const WhatsappMedia = require('./WhatsappMedia');
 const Tabulacao = require('./Tabulacao');
 const ActivityLog = require('./ActivityLog'); // Adicionado
+const verificaAcessoMestre = require('./verificaAcessoMestre'); // <<< ADICIONADO
 
 // --- MEDIDAS DE SEGURANÇA PARA ROTAS ADMIN ---
 // (Este trecho foi movido da sua resposta anterior para cá para centralizar a lógica)
@@ -25,6 +26,14 @@ function verificaAdminHost(req, res, next) {
   }
   // Se não for admin host, redireciona ou mostra erro
   res.status(403).render('error', { message: 'Acesso Negado', error: { status: 403, stack: 'Você não tem permissão para acessar esta página.' } });
+}
+
+// Middleware para garantir que apenas o super_admin acesse
+function verificaSuperAdmin(req, res, next) {
+  if (req.session.usuario && req.session.usuario.tipo === 'super_admin') {
+    return next();
+  }
+  res.status(403).render('error', { message: 'Acesso Negado', error: { status: 403, stack: 'Acesso restrito ao super administrador.' } });
 }
 
 // 1. Rate Limiter: Proteção contra força bruta no login
@@ -46,7 +55,12 @@ router.get('/login', (req, res) => {
 // POST /admin/login - Processa o login do admin
 router.post('/login', adminLoginLimiter, async (req, res) => {
   const { email, senha } = req.body;
-
+  
+  // Redirecionamento especial para o super admin 'sa'
+  if (email.toLowerCase() === 'sa') {
+     // A lógica de login do 'sa' agora está em /routes/index.js, mas podemos adicionar um fallback aqui se necessário.
+     // Por agora, vamos assumir que o fluxo principal de login lida com isso.
+  }
   try {
     // Busca um usuário que seja do tipo 'admin' e não tenha empresa_id (admin host)
     const adminUser = await Usuario.findOne({ where: { email, tipo: 'admin', empresa_id: null } });
@@ -66,14 +80,21 @@ router.post('/login', adminLoginLimiter, async (req, res) => {
       return res.redirect('/admin/mfa-verify');
     }
 
-    // Login bem-sucedido (sem MFA)
-    req.session.usuario = {
-        id: adminUser.id,
-        nome: adminUser.nome,
-        tipo: adminUser.tipo,
-        empresa_id: adminUser.empresa_id
+    const userData = {
+      id: adminUser.id,
+      nome: adminUser.nome,
+      tipo: adminUser.tipo,
+      empresa_id: adminUser.empresa_id
     };
-    res.redirect('/admin/dashboard'); // Redireciona para o painel principal do admin
+
+    req.session.regenerate((err) => {
+      if (err) {
+        console.error("Erro ao regenerar sessão no login do admin:", err);
+        return res.render('admin-login', { error: 'Ocorreu um erro no servidor.', email });
+      }
+      req.session.usuario = userData;
+      res.redirect('/admin/dashboard'); // Redireciona para o painel principal do admin
+    });
 
   } catch (error) {
     console.error("Erro no login do admin:", error);
@@ -122,10 +143,10 @@ router.post('/mfa-verify', async (req, res) => {
 });
 
 /* GET página de aprovação de empresas */
-router.get('/aprovar-empresas', verificaAutenticacao, verificaAdminHost, async (req, res) => {
+router.get('/aprovar-empresas', verificaAutenticacao, verificaAcessoMestre, async (req, res) => {
   try {
     const empresasPendentes = await Empresa.findAll({ // Alterado para buscar status 1 (pendente)
-      where: { status: 'pendente' },
+      where: { status: 1 },
       order: [['created_at', 'ASC']]
     });
     res.render('aprovar-empresas', {
@@ -140,7 +161,7 @@ router.get('/aprovar-empresas', verificaAutenticacao, verificaAdminHost, async (
 });
 
 /* POST para aprovar uma empresa */
-router.post('/aprovar-empresa/:id', verificaAutenticacao, verificaAdminHost, async (req, res) => {
+router.post('/aprovar-empresa/:id', verificaAutenticacao, verificaAcessoMestre, async (req, res) => {
   try {
     const empresa = await Empresa.findByPk(req.params.id);
     if (empresa) {
@@ -154,7 +175,7 @@ router.post('/aprovar-empresa/:id', verificaAutenticacao, verificaAdminHost, asy
 });
 
 /* POST para rejeitar uma empresa */
-router.post('/rejeitar-empresa/:id', verificaAutenticacao, verificaAdminHost, async (req, res) => {
+router.post('/rejeitar-empresa/:id', verificaAutenticacao, verificaAcessoMestre, async (req, res) => {
   try {
     const empresa = await Empresa.findByPk(req.params.id);
     if (empresa) {
@@ -168,7 +189,7 @@ router.post('/rejeitar-empresa/:id', verificaAutenticacao, verificaAdminHost, as
 });
 
 /* GET página de gerenciamento de todas as empresas */
-router.get('/gerenciar-empresas', verificaAutenticacao, verificaAdminHost, async (req, res) => {
+router.get('/gerenciar-empresas', verificaAutenticacao, verificaAcessoMestre, async (req, res) => {
   try {
     const empresas = await Empresa.findAll({
       include: [{ model: Usuario, attributes: ['id'] }], // Inclui usuários para contagem
@@ -186,7 +207,7 @@ router.get('/gerenciar-empresas', verificaAutenticacao, verificaAdminHost, async
 });
 
 /* GET página para editar uma empresa */
-router.get('/editar-empresa/:id', verificaAutenticacao, verificaAdminHost, async (req, res) => {
+router.get('/editar-empresa/:id', verificaAutenticacao, verificaAcessoMestre, async (req, res) => {
   try {
     const empresa = await Empresa.findByPk(req.params.id);
     if (!empresa) {
@@ -204,7 +225,7 @@ router.get('/editar-empresa/:id', verificaAutenticacao, verificaAdminHost, async
 });
 
 /* POST para salvar a edição de uma empresa */
-router.post('/editar-empresa/:id', verificaAutenticacao, verificaAdminHost, async (req, res) => {
+router.post('/editar-empresa/:id', verificaAutenticacao, verificaAcessoMestre, async (req, res) => {
   const { id } = req.params;
   const { nome_fantasia, razao_social, cnpj, status } = req.body;
   try {
@@ -225,7 +246,7 @@ router.post('/editar-empresa/:id', verificaAutenticacao, verificaAdminHost, asyn
 });
 
 /* POST para bloquear/desbloquear uma empresa */
-router.post('/alternar-status-empresa/:id', verificaAutenticacao, verificaAdminHost, async (req, res) => {
+router.post('/alternar-status-empresa/:id', verificaAutenticacao, verificaAcessoMestre, async (req, res) => {
   try {
     const empresa = await Empresa.findByPk(req.params.id);
     if (empresa) {
@@ -241,7 +262,7 @@ router.post('/alternar-status-empresa/:id', verificaAutenticacao, verificaAdminH
 });
 
 /* POST para remover uma empresa */
-router.post('/remover-empresa/:id', verificaAutenticacao, verificaAdminHost, async (req, res) => {
+router.post('/remover-empresa/:id', verificaAutenticacao, verificaAcessoMestre, async (req, res) => {
   const { id } = req.params;
   const t = await Empresa.sequelize.transaction();
   try {
@@ -281,11 +302,70 @@ router.get('/dashboard', verificaAutenticacao, verificaAdminHost, (req, res) => 
     res.render('admin-dashboard', { title: 'Painel do Administrador' }); // Crie esta view
 });
 
+// =================================================================
+// NOVAS ROTAS PARA O DASHBOARD DO SUPER ADMIN
+// =================================================================
+
+// GET /admin/super-dashboard - Renderiza a página do dashboard
+router.get('/super-dashboard', verificaAutenticacao, verificaSuperAdmin, (req, res) => {
+  res.render('super-admin-dashboard', { title: 'Dashboard Geral' });
+});
+
+// GET /admin/api/empresas-aprovadas - API para listar empresas aprovadas
+router.get('/api/empresas-aprovadas', verificaAutenticacao, verificaSuperAdmin, async (req, res) => {
+  try {
+    const empresas = await Empresa.findAll({
+      where: { status: 2 }, // Aprovado
+      order: [['nome_fantasia', 'ASC']],
+      attributes: ['id', 'nome_fantasia', 'cnpj']
+    });
+    res.json({ success: true, empresas });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erro ao buscar empresas.' });
+  }
+});
+
+// GET /admin/api/empresa/:id/funcionarios - API para listar funcionários de uma empresa
+router.get('/api/empresa/:id/funcionarios', verificaAutenticacao, verificaSuperAdmin, async (req, res) => {
+  try {
+    const funcionarios = await Usuario.findAll({
+      where: { empresa_id: req.params.id },
+      order: [['nome', 'ASC']],
+      attributes: ['id', 'nome', 'email', 'tipo']
+    });
+    res.json({ success: true, funcionarios });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erro ao buscar funcionários.' });
+  }
+});
+
+// GET /admin/api/user/:id/whatsapp-status - API para ver conexões WhatsApp de um usuário
+router.get('/api/user/:id/whatsapp-status', verificaAutenticacao, verificaSuperAdmin, async (req, res) => {
+  try {
+    const devices = await WhatsappDevice.findAll({ where: { user_id: req.params.id } });
+    // Aqui você pode enriquecer com o status 'isReady' do whatsappManager se necessário
+    res.json({ success: true, devices });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erro ao buscar conexões WhatsApp.' });
+  }
+});
+
+// GET /admin/api/user/:id/chatbot-status - API para ver conexões Chatbot de um usuário
+router.get('/api/user/:id/chatbot-status', verificaAutenticacao, verificaSuperAdmin, async (req, res) => {
+  try {
+    const bots = await ChatbotDevice.findAll({ where: { user_id: req.params.id } });
+    // Enriquecer com status 'isReady' do chatbotManager
+    res.json({ success: true, bots });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erro ao buscar conexões de Chatbot.' });
+  }
+});
+
 // GET /admin/logs - Exibe a página de logs de atividade
 router.get('/logs', verificaAutenticacao, async (req, res) => {
   try {
     // 1. Verifica se o usuário é admin. Se não for, nega o acesso.
-    if (req.session.usuario.tipo !== 'admin') {
+    if (!['admin', 'super_admin'].includes(req.session.usuario.tipo)) {
       return res.status(403).render('error', { message: 'Acesso Negado', error: { status: 403, stack: 'Você não tem permissão para acessar esta página.' } });
     }
 

@@ -1,7 +1,7 @@
 module.exports = function verificaAutenticacao(req, res, next) {
   if (req.session && req.session.usuario) {
-    next();
+    return next();
   } else {
-    res.redirect('/');
+    res.redirect('/login');
   }
 };

@@ -2,11 +2,11 @@ const { DataTypes } = require('sequelize');
 const sequelize = require('./banco');
 
 const WhatsappMedia = sequelize.define('WhatsappMedia', {
-  id: { type: DataTypes.STRING, primaryKey: true }, // ID da mensagem, não auto-incrementado
-  messageId: { type: DataTypes.STRING, allowNull: true }, // id da mensagem (se houver)
+  id: { type: DataTypes.STRING, primaryKey: true, allowNull: false }, // ID da mensagem, que é uma string.
+  messageId: { type: DataTypes.STRING, allowNull: false }, // id da mensagem (se houver)
   chatId: { type: DataTypes.STRING, allowNull: false },
   deviceId: { type: DataTypes.STRING, allowNull: false },
-  userId: { type: DataTypes.INTEGER, allowNull: true },
+  empresa_id: { type: DataTypes.INTEGER, allowNull: true, references: { model: 'empresas', key: 'id' } },
   filename: { type: DataTypes.STRING, allowNull: true },
   mimetype: { type: DataTypes.STRING, allowNull: true },
   size: { type: DataTypes.INTEGER, allowNull: true },

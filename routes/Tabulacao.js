@@ -4,6 +4,7 @@ const sequelizeUser = require('./banco');
 const Tabulacao = sequelizeUser.define('tabulacoes', {
   id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
   user_id: { type: DataTypes.INTEGER, allowNull: false },
+  empresa_id: { type: DataTypes.INTEGER, allowNull: true, references: { model: 'empresas', key: 'id' } }, // Adicionado
   chatId: { type: DataTypes.STRING, allowNull: false },
   tabulacao: { type: DataTypes.STRING, allowNull: false },
   detalhes: { type: DataTypes.TEXT, allowNull: true },

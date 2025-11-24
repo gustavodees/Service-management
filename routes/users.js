@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const whatsapp = require('./whatsapp');
+const whatsappManager = require('./whatsappManager'); // CORREÇÃO: Usar o gerenciador correto
 const verificaAutenticacao = require('./verificaAutenticacao');
 const Usuario = require('./Usuario');
 const Tabulacao = require('./Tabulacao'); // ADICIONE ESTA LINHA
@@ -24,6 +24,14 @@ router.get('/disparar', verificaAutenticacao, function(req, res, next) {
   });
 });
 
+// =================================================================
+// MELHORIA: Função para criar um atraso aleatório entre os envios.
+// Isso simula um comportamento mais humano e reduz o risco de banimento.
+// =================================================================
+function randomDelay(minSeconds, maxSeconds) {
+  const delay = Math.random() * (maxSeconds - minSeconds) + minSeconds;
+  return new Promise(resolve => setTimeout(resolve, delay * 1000));
+}
 /* POST para enviar mensagens em lote */
 router.post('/despara/enviar', verificaAutenticacao, async (req, res) => {
   try {
@@ -42,55 +50,27 @@ router.post('/despara/enviar', verificaAutenticacao, async (req, res) => {
       chosenDeviceId = parts.slice(1).join(':');
     }
 
-    const clientsMap = whatsapp.getClients ? whatsapp.getClients() : {};
     const userId = req.session.usuario.id;
 
-    // Se não foi passado deviceId explicitamente, tenta escolher automaticamente entre whatsapp/chatbot
-    if (!chosenDeviceId) {
-      // prioriza devices whatsapp do usuário
-      const readyUserDevices = Object.entries(clientsMap)
-        .filter(([, obj]) => obj && obj.userId === userId && obj.isClientReady)
-        .map(([id]) => ({ source: 'whatsapp', id }));
-
-      // considera também chatbots prontos (quando houver apenas um disponível)
-      const chatbotClients = (chatbotModule && chatbotModule.chatbotClients) ? chatbotModule.chatbotClients : {};
-      const readyChatbots = Object.entries(chatbotClients)
-        .filter(([, obj]) => obj && obj.isClientReady)
-        .map(([id]) => ({ source: 'chatbot', id }));
-
-      if (readyUserDevices.length > 0) {
-        chosenDeviceType = 'whatsapp';
-        chosenDeviceId = readyUserDevices[0].id;
-      } else if (readyChatbots.length === 1) {
-        chosenDeviceType = 'chatbot';
-        chosenDeviceId = readyChatbots[0].id;
-      } else {
-        // nenhum device apropriado encontrado
-        return res.status(400).json({ message: 'WhatsApp/ChatBot não está conectado!', total: 0 });
-      }
-    }
-
-    // obtém objeto do client correto
-    let clientObj = null;
+    // CORREÇÃO: Obter o cliente diretamente do gerenciador correto.
+    let client;
     if (chosenDeviceType === 'chatbot') {
-      const chatbotClients = (chatbotModule && chatbotModule.chatbotClients) ? chatbotModule.chatbotClients : {};
-      clientObj = chatbotClients[chosenDeviceId];
+      const chatbotClients = chatbotModule.chatbotClients || {};
+      const chatbotClientData = chatbotClients[chosenDeviceId];
+      client = (chatbotClientData && chatbotClientData.isClientReady) ? chatbotClientData.client : null;
     } else {
-      clientObj = clientsMap[chosenDeviceId];
+      client = whatsappManager.getClient(chosenDeviceId);
     }
 
-    if (!chosenDeviceId || !clientObj) {
-      return res.status(400).json({ message: 'Device não encontrado ou não conectado!', total: 0 });
-    }
-
-    if (!clientObj.isClientReady || !clientObj.client) {
-      return res.status(400).json({ message: 'Device inválido ou não está pronto para envio', total: 0 });
+    if (!client) {
+      return res.status(400).json({ message: 'Dispositivo não encontrado ou não está conectado.', total: 0 });
     }
 
     const numerosArray = numeros
       .split('\n')
       .map(n => n.replace(/\D/g, ''))
-      .filter(n => n.length >= 12);
+      // MELHORIA: Filtro mais flexível para números brasileiros (com ou sem o 9 extra)
+      .filter(n => n.length >= 10 && n.length <= 13);
 
     if (numerosArray.length === 0) {
       return res.status(400).json({ message: 'Nenhum número válido para envio', total: 0 });
@@ -103,8 +83,11 @@ router.post('/despara/enviar', verificaAutenticacao, async (req, res) => {
 
     for (const numero of numerosArray) {
       try {
+        // Adiciona o '55' e garante que o formato seja adequado para getNumberId
+        const numeroCompleto = numero.startsWith('55') ? numero : `55${numero}`;
+
         // Verifica se o número possui WhatsApp
-        const wid = await clientObj.client.getNumberId(numero);
+        const wid = await client.getNumberId(numeroCompleto);
         if (!wid) {
           pulados++;
           invalidos.push(numero);
@@ -113,19 +96,14 @@ router.post('/despara/enviar', verificaAutenticacao, async (req, res) => {
         }
 
         // Envia usando o ID serializado retornado (garantido válido)
-        await clientObj.client.sendMessage(wid._serialized, mensagem);
-
-        // Remover da tabulação se existir (use o número serializado!)
-        if (whatsapp.chatsTabulados && whatsapp.chatsTabulados.has(wid._serialized)) {
-          await whatsapp.removerTabulacaoSeExistir(userId, wid._serialized);
-        }
+        await client.sendMessage(wid._serialized, mensagem);
 
         enviados++;
         const sentAt = new Date().toISOString();
         resultsDetails.push({ number: numero, status: 'sent', timestamp: sentAt, chatId: wid._serialized });
 
-        // Intervalo entre envios para evitar bloqueios
-        await new Promise(r => setTimeout(r, 4000));
+        // MELHORIA: Usa um intervalo aleatório entre 5 e 15 segundos para segurança.
+        await randomDelay(5, 15);
       } catch (err) {
         console.error(`Erro ao enviar para ${numero}:`, err && err.message ? err.message : err);
         resultsDetails.push({ number: numero, status: 'error', error: err && err.message ? err.message : String(err), timestamp: null });
@@ -133,42 +111,6 @@ router.post('/despara/enviar', verificaAutenticacao, async (req, res) => {
     }
 
     // Salva “último disparo” para o device (chama função de cada módulo se existir)
-    try {
-      const now = new Date();
-      const iso = now.toISOString();
-
-      if (chosenDeviceType === 'chatbot') {
-        // se o módulo chatbot expõe um setter, prefira usá-lo
-        if (chatbotModule && typeof chatbotModule.setLastMassSend === 'function') {
-          try { chatbotModule.setLastMassSend(chosenDeviceId, iso); } catch (e) {}
-        }
-
-        // atualiza a entrada em chatbotClients (chatbot.js exporta chatbotClients)
-        if (chatbotModule && chatbotModule.chatbotClients && chatbotModule.chatbotClients[chosenDeviceId]) {
-          try { chatbotModule.chatbotClients[chosenDeviceId].lastMassSend = iso; } catch (e) {}
-        }
-
-        // fallback: mapa simples no próprio módulo chatbot
-        try {
-          chatbotModule.chatbotLastMassSend = chatbotModule.chatbotLastMassSend || {};
-          chatbotModule.chatbotLastMassSend[chosenDeviceId] = iso;
-        } catch (e) {}
-      } else {
-        // whatsapp: usa setter se existir
-        if (whatsapp && typeof whatsapp.setLastMassSend === 'function') {
-          try { whatsapp.setLastMassSend(chosenDeviceId, iso); } catch (e) {}
-        }
-        // também atualiza o objeto clients caso exista
-        try {
-          const clientsMap = whatsapp.getClients ? whatsapp.getClients() : {};
-          if (clientsMap && clientsMap[chosenDeviceId]) {
-            clientsMap[chosenDeviceId].lastMassSend = iso;
-          }
-        } catch (e) {}
-      }
-    } catch (e) {
-      console.warn('Falha ao gravar lastMassSend (não crítico):', e);
-    }
 
     res.json({
       message: `Mensagens enviadas via device ${chosenDeviceType}:${chosenDeviceId}`,

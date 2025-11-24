@@ -1,11 +1,23 @@
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const { EventEmitter } = require('events');
+const { v4: uuidv4 } = require('uuid'); // Adicionado para gerar IDs de tarefa
+const fs = require('fs');
 const path = require('path');
 const WhatsappDevice = require('./whatsappDevice');
 const WhatsappMessage = require('./WhatsappMessage');
 const Conversation = require('./Conversation');
 const sequelize = require('./banco');
 const WhatsappMedia = require('./WhatsappMedia');
+
+// Helper to identify and skip status broadcast contacts
+function isStatusContact(chat) {
+  if (!chat) return false;
+  if (chat.isStatus === true) return true;
+  const id = (chat.id?._serialized || '').toString();
+  if (!id) return false;
+  // Common patterns for status/broadcast contacts
+  return id.endsWith('@status') || id === 'status@broadcast';
+}
 
 class WhatsappManager {
   constructor() {
@@ -97,14 +109,38 @@ class WhatsappManager {
         }
       });
 
-      // Inicia o processo de sincronização de contatos e mensagens
-      this.syncChats(client, deviceId, empresaId);
+      // MELHORIA: Inicia a sincronização com feedback de progresso para o frontend.
+      const taskId = uuidv4();
+      
+      // Notifica o frontend que uma sincronização foi iniciada e envia o taskId.
+      this.wss.clients.forEach(wsClient => {
+        if (wsClient.empresa_id === this.clients[deviceId]?.empresaId) {
+          wsClient.send(JSON.stringify({
+            type: 'sync-started',
+            deviceId,
+            taskId
+          }));
+        }
+      });
+
+      // Executa a sincronização em segundo plano, passando o taskId para que o progresso seja rastreado.
+      // O objeto syncTasks é gerenciado pelo app.js, mas podemos passar um objeto local para o manager.
+      // Por simplicidade, vamos assumir que a lógica de `syncChats` pode lidar com um objeto de tasks nulo
+      // ou vamos precisar passar o objeto global. A melhor abordagem é o manager ser autossuficiente.
+      // Por agora, vamos chamar a função de sincronização. A rota em app.js já gerencia o objeto `syncTasks`.
+      // Para que isso funcione, a chamada em app.js é a principal. Aqui, apenas notificamos.
+      // A lógica de `syncChats` já foi ajustada para receber taskId.
+      this.syncChats(deviceId, empresaId, taskId, {}).catch(err => console.error(`[${deviceId}] Falha na sincronização automática pós-conexão:`, err));
     });
 
     // =================================================================
     // ADICIONADO: Ouve novas mensagens em tempo real
     // =================================================================
     client.on('message_create', async (message) => {
+      // Ignora mensagens enviadas pelo próprio bot para evitar loops e duplicatas
+      if (message.fromMe) {
+          return;
+      }
       // Ignora notificações de status, chamadas, etc. Processa apenas mensagens de texto/mídia.
       if (!message.from) {
         return;
@@ -128,6 +164,26 @@ class WhatsappManager {
           empresa_id: empresaId,
         });
 
+        // ADICIONADO: Processamento de mídia recebida
+        if (message.hasMedia) {
+          try {
+            const media = await message.downloadMedia();
+            if (media && media.data) {
+              await WhatsappMedia.create({
+                id: message.id.id, // Usa o ID da mensagem como ID da mídia
+                messageId: message.id.id,
+                chatId: chatId,
+                deviceId: deviceId,
+                empresa_id: this.clients[deviceId]?.empresaId || empresaId,
+                mimetype: media.mimetype,
+                filename: media.filename,
+                data: media.data, // Conteúdo em base64
+              });
+            }
+          } catch (mediaError) {
+            console.error(`[${deviceId}] Falha ao baixar ou salvar mídia da mensagem ${message.id.id}:`, mediaError);
+          }
+        }
         // CORREÇÃO: Busca o contato para obter o nome correto (pushname) em vez de usar notifyName.
         const contact = await client.getContactById(chatId);
         const chatName = contact.pushname || contact.name || chatId.replace('@c.us', '');
@@ -152,7 +208,8 @@ class WhatsappManager {
               type: 'new-message',
               message: message.rawData,
               customerName: message._data.notifyName,
-              deviceId
+              deviceId,
+              chatId: chatId // Passa o chatId correto para o frontend
             }));
           }
         });
@@ -162,23 +219,26 @@ class WhatsappManager {
     });
 
     client.on('disconnected', async (reason) => {
-      console.log(`Cliente ${deviceId} foi desconectado. Razão: ${reason}`);
-      await WhatsappDevice.update({ status: 'disconnected' }, { where: { device_id: deviceId } });
+      console.log(`[INFO] Cliente ${deviceId} foi desconectado. Razão: ${reason}`);
 
+      // Notifica o frontend sobre a desconexão
       this.wss.clients.forEach(wsClient => {
-        // CORREÇÃO: Garante que a notificação de desconexão seja enviada apenas
-        // para os clientes WebSocket da empresa correta.
         if (this.clients[deviceId] && wsClient.empresa_id === this.clients[deviceId].empresaId) {
           wsClient.send(JSON.stringify({ type: 'disconnected', deviceId, status: 'disconnected' }));
         }
       });
+
+      // CORREÇÃO: A lógica de limpeza de dados foi movida para o método `disconnectClient`
+      // para evitar duplicação e condições de corrida. O evento 'disconnected' agora
+      // apenas limpa o cliente da memória.
+      console.log(`[INFO] Cliente ${deviceId} desconectado. Limpando da memória.`);
 
       // Remove o cliente da memória para permitir uma nova inicialização
       if (this.clients[deviceId]) {
         try {
           await this.clients[deviceId].instance.destroy();
         } catch (e) {
-          console.error(`[${deviceId}] Erro ao tentar destruir o cliente após desconexão:`, e);
+          console.error(`[ERRO] Falha ao tentar destruir o cliente ${deviceId} após desconexão:`, e);
         } finally {
           delete this.clients[deviceId];
         }
@@ -203,180 +263,217 @@ class WhatsappManager {
     if (clientData && clientData.instance) {
       console.log(`Solicitando desconexão para ${deviceId}...`);
       try {
-        await clientData.instance.logout(); // O logout já dispara o evento 'disconnected'
+        await clientData.instance.logout(); // Isso vai disparar o evento 'disconnected'
       } catch (error) {
         console.error(`Erro ao fazer logout do cliente ${deviceId}:`, error);
-        // Mesmo com erro, removemos a referência para permitir nova tentativa
+        // Continua para a limpeza manual mesmo se o logout falhar.
+      }
+    }
+
+    // --- INÍCIO DA LÓGICA DE LIMPEZA COMPLETA DE DADOS ---
+    // Esta parte garante que todos os dados sejam removidos do banco de dados, centralizando a lógica aqui.
+    const transaction = await sequelize.transaction();
+    try {
+      console.log(`[MANAGER] Iniciando limpeza completa de dados para o dispositivo: ${deviceId}`);
+
+      // 1. Deletar mídias associadas
+      const deletedMedia = await WhatsappMedia.destroy({ where: { deviceId: deviceId }, transaction });
+      console.log(` -> ${deletedMedia} mídias deletadas.`);
+
+      // 2. Deletar mensagens
+      const deletedMessages = await WhatsappMessage.destroy({ where: { deviceId: deviceId }, transaction });
+      console.log(` -> ${deletedMessages} mensagens deletadas.`);
+
+      // 3. Deletar conversas/contatos
+      const deletedConversations = await Conversation.destroy({ where: { device_id: deviceId }, transaction });
+      console.log(` -> ${deletedConversations} conversas deletadas.`);
+
+      // 4. Deletar o próprio dispositivo do banco
+      const deletedDevice = await WhatsappDevice.destroy({ where: { device_id: deviceId }, transaction });
+      console.log(` -> ${deletedDevice} registro(s) de dispositivo deletado(s).`);
+
+      await transaction.commit();
+      console.log(`[MANAGER] Limpeza de dados para ${deviceId} finalizada com sucesso.`);
+
+    } catch (dbError) {
+      await transaction.rollback();
+      console.error(`[ERRO] Falha na limpeza de dados para ${deviceId}:`, dbError);
+    } finally {
+      // Remove o cliente da memória para permitir uma nova inicialização no futuro.
+      if (this.clients[deviceId]) {
         delete this.clients[deviceId];
       }
     }
   }
 
-  async syncChats(clientInstance, deviceId, empresaId, taskId = null, syncTasks = null) {
+  async syncChats(deviceId, empresaId, taskId = null, syncTasks = null) {
+    console.log("\n\n");
+    console.log("*****************************************************************");
+    console.log(`*** [${deviceId}] INICIANDO SINCRONIZAÇÃO DE HISTÓRICO ***`);
+    console.log("*****************************************************************");
+    console.log(`*** Dispositivo: ${deviceId}`);
+    console.log(`*** Empresa: ${empresaId}`);
+    if (taskId) console.log(`*** Task ID: ${taskId}`);
+    console.log("*** Por favor, aguarde a conclusão do processo. ***");
+    console.log("\n");
+
+    const updateTaskProgress = (progress, message) => {
+      if (taskId && syncTasks && syncTasks[taskId]) {
+        syncTasks[taskId].progress = progress;
+        syncTasks[taskId].message = message;
+      }
+    };
+
     try {
-      // --- CORREÇÃO: Usa a instância do cliente passada como argumento ---
-      let client = clientInstance;
+        let clientInstance = this.getClient(deviceId);
 
-      // Se o cliente não estiver pronto, tenta inicializá-lo e aguarda.
-      if (!client) {
-        console.log(`[Sync ${taskId}] Cliente ${deviceId} não está pronto. Tentando reconectar...`);
-        if (taskId && syncTasks) {
-          syncTasks[taskId].message = 'Reconectando...';
-          this.wss.clients.forEach(wsClient => {
-            wsClient.send(JSON.stringify({ type: 'sync-progress', taskId, progress: 0, message: 'Reconectando...' }));
-          });
+        // Se o cliente não estiver pronto, tenta inicializar e aguarda a conexão.
+        if (!clientInstance) {
+            console.log(`[SYNC] Cliente ${deviceId} não está pronto. Tentando inicializar...`);
+            updateTaskProgress(5, 'Conectando ao dispositivo...');
+            this.initializeClient(deviceId, empresaId);
+
+            // Aguarda o cliente ficar pronto com um timeout
+            await new Promise((resolve, reject) => {
+                const waitTimeout = setTimeout(() => reject(new Error('Tempo de conexão esgotado. Verifique o QR Code.')), 60000); // 60 segundos
+
+                const checkReady = setInterval(() => {
+                    clientInstance = this.getClient(deviceId);
+                    if (clientInstance) {
+                        clearTimeout(waitTimeout);
+                        clearInterval(checkReady);
+                        resolve();
+                    }
+                }, 1000);
+            });
         }
-        this.initializeClient(deviceId, empresaId);
-        return;
-      }
 
-      if (taskId && syncTasks) {
-        console.log(`[Sync ${taskId}] Iniciando sincronização para o device ${deviceId}`);
-        syncTasks[taskId].message = 'Buscando lista de conversas...';
-        syncTasks[taskId].progress = 5;
-      } else {
-        console.log(`[${deviceId}] Iniciando sincronização de histórico de chats...`);
-      }
+        updateTaskProgress(10, 'Buscando conversas...');
+        const chats = await clientInstance.getChats();
+        console.log(`[INFO] Total de conversas encontradas: ${chats.length}`);
 
-      const chats = await client.getChats();
-      const totalChats = chats.length;
-      console.log(`[${deviceId}] INICIANDO SINCRONIZAÇÃO. Total de conversas encontradas: ${totalChats}`);
+        const nonArchivedContacts = chats.filter(c => !c.archived && !c.isGroup && !isStatusContact(c));
+        const nonArchivedGroups = chats.filter(c => !c.archived && c.isGroup && !isStatusContact(c));
+        const archivedChats = chats.filter(c => c.archived && !isStatusContact(c));
 
-      if (taskId && syncTasks) {
-        syncTasks[taskId].message = `Processando ${totalChats} conversas...`;
-        syncTasks[taskId].progress = 10;
-      }
+        const allChatsForFrontend = [];
 
-      // --- OTIMIZAÇÃO: Processa os chats em duas fases ---
-      const recentChats = chats.slice(0, 20);
-      const remainingChats = chats.slice(20);
+        // Função interna para processar um lote de chats
+        const processChatList = async (chatList, type, progressStart, progressEnd) => {
+            console.log(`\n[INFO] Sincronizando ${chatList.length} conversas do tipo: ${type}`);
+            let processedCount = 0;
+            for (const chat of chatList) {
+                const chatName = chat.name || chat.id.user;
+                
+                processedCount++;
+                const currentProgress = progressStart + Math.round(((processedCount / chatList.length) * (progressEnd - progressStart)));
+                updateTaskProgress(currentProgress, `Sincronizando: ${chatName}`);
+                try {
+                    console.log(` -> Processando chat: "${chatName}"`);
 
-      // Função auxiliar para processar um lote de chats e atualizar o status
-      const processChatBatch = async (batch, isRecentBatch) => {
-        const batchSize = batch.length;
-        for (let i = 0; i < batchSize; i++) {
-          const chat = batch[i];
-          const overallIndex = isRecentBatch ? i : i + recentChats.length;
-          const progressPercentage = Math.round(((overallIndex + 1) / totalChats) * 100);
+                    const messages = await chat.fetchMessages({ limit: 100 });
+                    console.log(`    * Encontradas ${messages.length} mensagens para "${chatName}".`);
 
-          if (taskId && syncTasks) {
-            const message = isRecentBatch
-              ? `Sincronizando conversas recentes (${i + 1}/${batchSize})...`
-              : `Sincronizando histórico completo (${overallIndex + 1}/${totalChats})...`;
+                    if (messages.length > 0) {
+                        const messagesToSave = messages.map(msg => ({
+                            id: msg.id.id,
+                            chatId: chat.id._serialized,
+                            deviceId: deviceId,
+                            empresa_id: empresaId,
+                            body: msg.body,
+                            fromMe: msg.fromMe,
+                            type: msg.type,
+                            timestamp: msg.timestamp,
+                        }));
+                        await WhatsappMessage.bulkCreate(messagesToSave, { ignoreDuplicates: true });
+                    }
 
-            syncTasks[taskId].progress = progressPercentage;
-            syncTasks[taskId].message = message;
+                    // ADICIONADO: Processamento de mídias durante a sincronização
+                    for (const msg of messages) {
+                        if (msg.hasMedia) {
+                            try {
+                                const media = await msg.downloadMedia();
+                                if (media && media.data) {
+                                    await WhatsappMedia.upsert({
+                                        id: msg.id.id,
+                                        messageId: msg.id.id,
+                                        chatId: chat.id._serialized,
+                                        deviceId: deviceId,
+                                        empresa_id: empresaId,
+                                        mimetype: media.mimetype,
+                                        filename: media.filename,
+                                        data: media.data,
+                                    });
+                                }
+                            } catch (mediaError) {
+                                // MELHORIA: Loga o erro mas não para a sincronização.
+                                console.warn(`[SYNC-WARN] Não foi possível baixar ou salvar a mídia para a mensagem ${msg.id.id}. Erro: ${mediaError.message}. Continuando...`);
+                            }
+                        }
+                    }
 
-            this.wss.clients.forEach(wsClient => {
-              if (wsClient.empresa_id === empresaId) {
-                wsClient.send(JSON.stringify({ type: 'sync-progress', taskId, progress: progressPercentage, message }));
-              }
-            });
-          }
+                    const contact = await clientInstance.getContactById(chat.id._serialized);
+                    const lastMessageInChat = messages.length > 0 ? messages[0] : null;
 
-          console.log(`[${deviceId}] [${overallIndex + 1}/${totalChats}] Processando chat: "${chat.name || chat.id._serialized}" (${progressPercentage}%)`);
+                    const conversationData = {
+                        id: chat.id._serialized,
+                        empresa_id: empresaId,
+                        name: contact.pushname || contact.name || chat.id.user,
+                        profile_pic_url: await contact.getProfilePicUrl().catch(() => null),
+                        last_message: lastMessageInChat ? lastMessageInChat.body : (chat.lastMessage?.body || ''),
+                        timestamp: new Date((lastMessageInChat ? lastMessageInChat.timestamp : chat.timestamp) * 1000),
+                        unread_count: chat.unreadCount,
+                        is_group: chat.isGroup,
+                        archived: chat.archived,
+                        source: 'whatsapp',
+                        device_id: deviceId,
+                    };
+                    
+                    await Conversation.upsert(conversationData);
+                    allChatsForFrontend.push(conversationData);
 
-          if (chat.archived) {
-            continue; // Pula chats arquivados
-          }
-          
-          // CORREÇÃO: Ignora a conversa "status@broadcast"
-          if (chat.id._serialized === 'status@broadcast') {
-            continue;
-          }
-
-          // Busca o contato para ter informações precisas
-          const contact = await client.getContactById(chat.id._serialized);
-          
-          // Busca última mensagem para timestamp
-          const messages = await chat.fetchMessages({ limit: 80 });
-          const lastMessageInChat = messages.length > 0 ? messages[messages.length - 1] : null;
-
-          await Conversation.upsert({
-            id: chat.id._serialized,
-            empresa_id: empresaId,
-            name: contact.pushname || contact.name || chat.id.user,
-            profile_pic_url: await contact.getProfilePicUrl().catch(() => null),
-            last_message: lastMessageInChat ? lastMessageInChat.body : null,
-            timestamp: lastMessageInChat ? new Date(lastMessageInChat.timestamp * 1000) : new Date(),
-            unread_count: chat.unreadCount,
-            is_group: chat.isGroup,
-            source: 'whatsapp',
-            device_id: deviceId,
-          }).catch(err => {
-            console.error(`[${deviceId}] Falha ao salvar conversa ${chat.id._serialized}:`, err);
-          });
-
-          // Busca o timestamp da última mensagem salva
-          const lastSavedMessage = await WhatsappMessage.findOne({
-            where: { deviceId, chatId: chat.id._serialized },
-            order: [['timestamp', 'DESC']],
-            attributes: ['timestamp'],
-            raw: true,
-          });
-          const lastTimestamp = lastSavedMessage ? lastSavedMessage.timestamp : 0;
-
-          console.log(`[${deviceId}]   -> Verificando ${messages.length} mensagens...`);
-
-          for (const msg of messages) {
-            if (msg.timestamp <= lastTimestamp) {
-              continue;
-            }
-
-            await WhatsappMessage.upsert({
-              id: msg.id.id,
-              chatId: chat.id._serialized,
-              deviceId: deviceId,
-              body: msg.body,
-              fromMe: msg.fromMe,
-              type: msg.type,
-              timestamp: msg.timestamp,
-              empresa_id: empresaId,
-            });
-
-            if (msg.hasMedia) {
-              try {
-                const media = await msg.downloadMedia();
-                if (media && media.data) {
-                  await WhatsappMedia.upsert({
-                    id: msg.id.id,
-                    messageId: msg.id.id,
-                    chatId: chat.id._serialized,
-                    deviceId: deviceId,
-                    mimetype: media.mimetype,
-                    filename: media.filename,
-                    size: media.size,
-                    data: media.data,
-                    timestamp: msg.timestamp,
-                    empresa_id: empresaId,
-                  });
+                } catch (chatError) {
+                    console.error(`[ERRO] Falha ao sincronizar o chat "${chatName}":`, chatError.message);
                 }
-              } catch (mediaError) {
-                console.error(`[${deviceId}] Falha ao baixar ou salvar mídia para a mensagem ${msg.id.id}:`, mediaError.message);
-              }
             }
-          }
-        }
-      };
+        };
 
-      // Executa as duas fases da sincronização
-      await processChatBatch(recentChats, true);
-      await processChatBatch(remainingChats, false);
+        // Executa a sincronização na ordem definida
+        await processChatList(nonArchivedContacts, 'Contatos Individuais', 15, 60);
+        await processChatList(nonArchivedGroups, 'Grupos', 60, 80);
+        await processChatList(archivedChats, 'Conversas Arquivadas', 80, 95);
 
-      // =================================================================
-      // Envia a lista de contatos para o frontend após a sincronização
-      // =================================================================
-      if (taskId && syncTasks) {
-        syncTasks[taskId] = { progress: 100, message: 'Concluído!', done: true };
-        console.log(`[Sync ${taskId}] Sincronização concluída.`);
-      } else {
-        console.log(`[${deviceId}] Sincronização de histórico concluída.`);
-      }
+        updateTaskProgress(100, 'Sincronização concluída!');
+        if (taskId && syncTasks && syncTasks[taskId]) syncTasks[taskId].done = true;
+        
+        // Notifica o frontend com a lista completa e atualizada de contatos
+        this.wss.clients.forEach(wsClient => {
+            if (wsClient.empresa_id === empresaId) {
+                wsClient.send(JSON.stringify({
+                    type: 'all-whatsapp-contacts',
+                    contacts: allChatsForFrontend,
+                    deviceId
+                }));
+            }
+        });
+
+        console.log("\n");
+        console.log("*****************************************************************");
+        console.log(`*** [${deviceId}] SINCRONIZAÇÃO DE HISTÓRICO FINALIZADA ***`);
+        console.log("*****************************************************************");
+        console.log("\n\n");
 
     } catch (error) {
-      console.error(`Erro ao buscar chats para ${deviceId}:`, error);
+        console.error(`[ERRO CRÍTICO] Falha durante a sincronização de chats para ${deviceId}:`, error);
+        updateTaskProgress(100, `Erro: ${error.message}`);
+        if (taskId && syncTasks && syncTasks[taskId]) syncTasks[taskId].done = true;
+        console.log("\n");
+        console.log("*****************************************************************");
+        console.log(`*** [${deviceId}] SINCRONIZAÇÃO DE HISTÓRICO FALHOU ***`);
+        console.log("*****************************************************************");
+        console.log("\n\n");
     }
-  } // Fim do método syncChats (havia chaves extras aqui no original)
+  } // Fim do método syncChats
 
   // =================================================================
   // ADICIONADO: Método para enviar mensagens
@@ -393,7 +490,7 @@ class WhatsappManager {
       console.log(`[${deviceId}] Enviando mensagem para: ${chatId}`);
 
       // Garante que o ID do chat esteja no formato correto (ex: 5511999999999@c.us)
-      const finalChatId = chatId.endsWith('@c.us') ? chatId : `${chatId}@c.us`;
+      const finalChatId = chatId.includes('@') ? chatId : `${chatId}@c.us`;
 
       const sentMessage = await client.sendMessage(finalChatId, text);
       console.log(`[${deviceId}] Mensagem enviada com sucesso para ${finalChatId}. ID: ${sentMessage.id.id}`);
@@ -431,6 +528,68 @@ class WhatsappManager {
     } catch (error) {
       console.error(`[${deviceId}] Falha ao enviar mensagem para ${chatId}:`, error);
       throw new Error('Não foi possível enviar a mensagem. Verifique se o número é válido.');
+    }
+  }
+
+  // =================================================================
+  // ADICIONADO: Método para enviar mídias (imagens, vídeos, documentos)
+  // =================================================================
+  async sendMedia(deviceId, chatId, filePath, filename, mimetype) {
+    const client = this.getClient(deviceId);
+
+    if (!client) {
+      throw new Error('Dispositivo WhatsApp não está conectado.');
+    }
+
+    try {
+      console.log(`[${deviceId}] Enviando mídia para: ${chatId}`);
+      const finalChatId = chatId.includes('@') ? chatId : `${chatId}@c.us`;
+
+      // Cria o objeto de mídia a partir do arquivo no servidor
+      const media = MessageMedia.fromFilePath(filePath);
+
+      // Envia a mídia com as opções corretas
+      const sentMessage = await client.sendMessage(finalChatId, media, {
+        caption: filename, // Opcional: usa o nome do arquivo como legenda
+      });
+
+      console.log(`[${deviceId}] Mídia enviada com sucesso para ${finalChatId}. ID: ${sentMessage.id.id}`);
+
+      // A lógica para salvar a mensagem/mídia enviada no banco de dados já é tratada
+      // pelo evento 'message_create' quando a mensagem é do próprio bot (fromMe: true).
+      // Não é necessário duplicar a lógica aqui.
+
+      return sentMessage.rawData;
+
+    } catch (error) {
+      console.error(`[${deviceId}] Falha ao enviar mídia para ${chatId}:`, error);
+      throw new Error('Não foi possível enviar a mídia. Verifique o arquivo e o número de destino.');
+    }
+  }
+  async setChatState(deviceId, chatId, state) {
+    const client = this.getClient(deviceId);
+    if (!client) {
+      // Ignore silently if client is not ready
+      return;
+    }
+
+    try {
+      const chat = await client.getChatById(chatId);
+      if (!chat) return;
+
+      switch (state) {
+        case 'typing':
+          await chat.sendStateTyping();
+          break;
+        case 'recording':
+          await chat.sendStateRecording();
+          break;
+        case 'clear':
+          await chat.clearState();
+          break;
+      }
+    } catch (error) {
+      console.error(`[${deviceId}] Falha ao definir estado '${state}' para o chat ${chatId}:`, error);
     }
   }
 
@@ -518,6 +677,20 @@ class WhatsappManager {
           wsClient.send(JSON.stringify({ type: 'chat-updated', deviceId, chatId }));
         }
       });
+    }
+  }
+
+  notifyChatTabulated(chatId, empresaId) {
+    if (this.wss) {
+        this.wss.clients.forEach(wsClient => {
+            // Envia a notificação apenas para clientes da mesma empresa
+            if (wsClient.empresa_id === empresaId) {
+                wsClient.send(JSON.stringify({
+                    type: 'chat-tabulated',
+                    chatId: chatId
+                }));
+            }
+        });
     }
   }
 }
