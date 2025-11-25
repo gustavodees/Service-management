@@ -128,6 +128,12 @@ body.atendimento-active {
   margin-bottom: 5px;
 }
 
+.conversation-item .conversation-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
 .conversation-item .left {
   display: flex;
   align-items: center;
@@ -159,6 +165,62 @@ body.atendimento-active {
   overflow: hidden;
   text-overflow: ellipsis;
   padding-left: 2.1rem; /* Alinha com o nome */
+}
+
+.conversation-menu-wrapper {
+  position: relative;
+}
+
+.conversation-menu-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.conversation-menu-btn:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+  color: var(--text-primary);
+}
+
+.conversation-menu {
+  position: absolute;
+  top: 125%;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  background: var(--background-white);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  z-index: 10;
+}
+
+.conversation-menu.hidden {
+  display: none;
+}
+
+.conversation-menu-item {
+  background: transparent;
+  border: none;
+  text-align: left;
+  padding: 0.75rem 1rem;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.conversation-menu-item:hover {
+  background-color: var(--background-light);
+}
+
+.conversation-menu-item.danger {
+  color: var(--danger-color);
 }
 
 /* --- Coluna 2: Painel do Chat --- */

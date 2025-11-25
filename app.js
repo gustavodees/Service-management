@@ -25,6 +25,7 @@ const whatsappManager = require('./routes/whatsappManager'); // Adicionado: Gere
 
 // Adicionado: Objeto em memória para rastrear o progresso das tarefas de sincronização
 const syncTasks = {};
+whatsappManager.setSyncTaskStore(syncTasks);
 
 const apiRouter = require('./routes/api'); // <<< ADICIONADO: Importar a nova rota da API
 // Adicionado: Importar todos os modelos para sincronização
@@ -1024,8 +1025,10 @@ app.use(function(err, req, res, next) {
 });
 
 // Adicionado: Sincroniza o banco de dados e cria as tabelas se não existirem
-sequelize.sync({ alter: true }).then(() => {
-  console.log('Banco de dados sincronizado. Tabelas verificadas/criadas.');
+const shouldAlterSchema = process.env.SEQUELIZE_SYNC_ALTER === 'true';
+const syncOptions = shouldAlterSchema ? { alter: true } : {};
+sequelize.sync(syncOptions).then(() => {
+  console.log(`Banco de dados sincronizado${shouldAlterSchema ? ' (alter ativo)' : ''}.`);
 }).catch(err => {
   console.error('Erro ao sincronizar o banco de dados:', err);
 });

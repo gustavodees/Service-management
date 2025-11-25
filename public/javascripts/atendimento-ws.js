@@ -44,10 +44,67 @@ let conversationSearchTerm = '';
 let whatsappContactsByDevice = {};
 let allWhatsappContacts = []; // Lista consolidada de todos os contatos
 // Adicionar controle da aba atual (contacts | groups | archived)
-let currentTab = localStorage.getItem('chatCurrentTab') || 'contacts';
+const allowedTabs = ['contacts', 'groups', 'archived'];
+let currentTab = localStorage.getItem('chatCurrentTab');
+if (!allowedTabs.includes(currentTab)) {
+  currentTab = 'contacts';
+}
 
 // Current connected device id (persisted in localStorage)
 let currentDeviceId = localStorage.getItem('currentDeviceId') || null;
+let activeConversationMenu = null;
+
+document.addEventListener('click', (event) => {
+  if (!event.target.closest('.conversation-menu-wrapper')) {
+    closeConversationMenus();
+  }
+});
+
+function getTabNameFromButton(button) {
+  if (!button) return null;
+  if (button.dataset && button.dataset.tab) return button.dataset.tab;
+  if (button.id && button.id.startsWith('tab-')) return button.id.replace('tab-', '');
+  return null;
+}
+
+function updateTabButtonsUI() {
+  const tabButtons = document.querySelectorAll('.conversation-tabs .tab-btn');
+  tabButtons.forEach(btn => {
+    const tabName = getTabNameFromButton(btn);
+    if (tabName === currentTab) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
+}
+
+function setCurrentTab(tabName) {
+  if (!allowedTabs.includes(tabName)) {
+    console.warn('Tab inválida ignorada:', tabName);
+    return;
+  }
+  if (currentTab === tabName) {
+    updateTabButtonsUI();
+    return;
+  }
+  currentTab = tabName;
+  localStorage.setItem('chatCurrentTab', currentTab);
+  updateTabButtonsUI();
+  renderConversations(window.ultimaListaConversas || []);
+}
+
+function initializeConversationTabs() {
+  const tabsContainer = document.querySelector('.conversation-tabs');
+  if (!tabsContainer) return;
+  const buttons = tabsContainer.querySelectorAll('.tab-btn');
+  buttons.forEach(btn => {
+    const tabName = getTabNameFromButton(btn);
+    if (!allowedTabs.includes(tabName)) return;
+    btn.addEventListener('click', () => setCurrentTab(tabName));
+  });
+  updateTabButtonsUI();
+}
 
 // Função para atualizar histórico local de conversas
 function updateLocalChatHistory(chatId, message) {
@@ -683,6 +740,12 @@ function connectWhatsappWebSocket() {
             renderConversations(window.ultimaListaConversas);
           }
           showNotification('Atendimento', 'Conversa retornou ao atendimento.');
+        }
+        break;
+
+      case 'conversation-updated':
+        if (data.chatId && data.update) {
+          applyConversationUpdates(data.chatId, data.update);
         }
         break;
 
@@ -1337,7 +1400,7 @@ function renderMediaContent(msg) {
   // OTIMIZAÇÃO: Se 'data' não estiver presente, cria um placeholder clicável para buscar a mídia sob demanda.
   if (msg.hasMedia && msg.mimetype) {
     const iconClass = msg.mimetype.startsWith('image/') ? 'fa-image' : (msg.mimetype.startsWith('video/') ? 'fa-video' : 'fa-file');
-    return `<div class="media-placeholder" onclick="fetchMediaAndOpen(this, '${msg.id}', '${selectedChatId}')">
+    return `<div class="media-placeholder" onclick="fetchMediaAndOpen(this, '${msg.id}')">
               <i class="fa-solid ${iconClass}"></i>
               <span>${msg.filename || 'Clique para ver a mídia'}</span>
               <small>Carregar</small>
@@ -1389,13 +1452,13 @@ function renderMediaContent(msg) {
 }
 
 // --- ADICIONADO: Função para buscar mídia sob demanda e abrir no modal ---
-async function fetchMediaAndOpen(element, messageId, chatId) {
+async function fetchMediaAndOpen(element, messageId) {
   // Mostra um estado de carregamento no placeholder
   element.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Carregando...';
   element.onclick = null; // Desativa o clique para evitar múltiplas requisições
 
   try {
-    const response = await fetch(`/whatsapp/media?messageId=${encodeURIComponent(messageId)}&chatId=${encodeURIComponent(chatId)}`);
+    const response = await fetch(`/api/media?messageId=${encodeURIComponent(messageId)}`);
     const result = await response.json();
 
     if (result.success && result.data) {
@@ -1444,27 +1507,23 @@ function tryLoadAudio(element) {
   `;
 
   // Tentar buscar áudio do servidor
-  fetch('/whatsapp/get-audio', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      messageId: messageId,
-      chatId: chatId
-    })
-  })
+  fetch(`/api/media?messageId=${encodeURIComponent(messageId)}`)
     .then(res => res.json())
     .then(result => {
-      if (result.success && result.audioUrl) {
+      if (result.success && result.data) {
+        const mimeType = result.mimetype || 'audio/ogg';
+        const dataUrl = `data:${mimeType};base64,${result.data}`;
         // Substituir elemento com player de áudio
         element.innerHTML = `
 
         <audio controls style="max-width: 300px;">
-          <source src="${result.audioUrl}" type="audio/ogg">
-          <source src="${result.audioUrl}" type="audio/mpeg">
-          <source src="${result.audioUrl}" type="audio/wav">
+          <source src="${dataUrl}" type="${mimeType}">
+          <source src="${dataUrl}" type="audio/ogg">
+          <source src="${dataUrl}" type="audio/mpeg">
+          <source src="${dataUrl}" type="audio/wav">
           Seu navegador não suporta áudio.
         </audio>
-        <br><small>🎵 Áudio</small>
+        <br><small>🎵 ${result.filename || 'Áudio'}</small>
       `;
       } else {
         element.innerHTML = `
@@ -1522,45 +1581,25 @@ async function loadInitialContacts() {
   }
 }
 
-/**
- * [NOVO] Busca os contatos iniciais da API REST.
- * Isso acelera o carregamento da página, que depois será atualizada via WebSocket.
- */
-async function loadInitialContacts() {
-  const list = document.getElementById('conversations-list');
-  if (!list) return;
-
-  // Mostra um estado de carregamento inicial
-  list.innerHTML = `
-    <div class="loading-state">
-      <i class="fa-solid fa-spinner fa-spin"></i>
-      <p>Carregando contatos...</p>
-    </div>
-  `;
-
-  try {
-    const response = await fetch('/api/contacts');
-    if (!response.ok) {
-      throw new Error(`API respondeu com status ${response.status}`);
-    }
-    const contacts = await response.json();
-    window.ultimaListaConversas = contacts;
-    renderConversations(contacts);
-  } catch (error) {
-    console.error('Falha ao carregar contatos iniciais via API:', error);
-    list.innerHTML = `
-      <div class="empty-state">
-        <i class="fa-solid fa-wifi-slash"></i>
-        <p>Erro ao carregar contatos</p>
-        <small>Verifique a conexão com o servidor.</small>
-      </div>
-    `;
-  }
-}
-
 function renderConversations(chats) {
   const list = document.getElementById('conversations-list');
   if (!list) return;
+  closeConversationMenus();
+
+  if (!list.dataset.menuScrollHandlerAttached) {
+    list.addEventListener('scroll', closeConversationMenus);
+    list.dataset.menuScrollHandlerAttached = 'true';
+  }
+
+  const getTimestampValue = (value) => {
+    if (value instanceof Date) return value.getTime();
+    if (typeof value === 'number') return value;
+    if (typeof value === 'string') {
+      const parsed = Date.parse(value);
+      return Number.isNaN(parsed) ? 0 : parsed;
+    }
+    return 0;
+  };
 
   // 1) Aplica filtro por aba atual (contacts | groups | archived)
   let filteredChats = chats.filter(c => {
@@ -1601,7 +1640,7 @@ function renderConversations(chats) {
   }
 
   // Ordenar chats por timestamp (mais recentes primeiro)
-  const sortedChats = filteredChats.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  const sortedChats = filteredChats.sort((a, b) => getTimestampValue(b.timestamp) - getTimestampValue(a.timestamp));
 
   sortedChats.forEach((chat) => {
     const div = document.createElement('div');
@@ -1621,6 +1660,7 @@ function renderConversations(chats) {
     const lastMessage = chat.lastMessage
       ? (chat.lastMessage.length > 50 ? chat.lastMessage.substring(0, 50) + '...' : chat.lastMessage)
       : 'Sem mensagens';
+    const actionsMarkup = buildConversationActions(chat);
 
     div.innerHTML = `
       ${profilePicUrl ? `<div class="conversation-pfp">
@@ -1631,7 +1671,10 @@ function renderConversations(chats) {
           ${iconHTML}
           <strong>${chat.name}</strong>
         </span>
-        ${unreadBadge}
+        <div class="conversation-meta">
+          ${unreadBadge}
+          ${actionsMarkup}
+        </div>
       </div>
       <div class="conversation-preview">
         <small>${lastMessage}</small>
@@ -1653,7 +1696,187 @@ function renderConversations(chats) {
     };
 
     list.appendChild(div);
+    attachConversationMenuHandlers(div, chat);
   });
+}
+
+function buildConversationActions(chat) {
+  if (!chat || chat.source !== 'whatsapp') {
+    return '';
+  }
+  const archiveAction = chat.archived ? 'unarchive' : 'archive';
+  const archiveLabel = chat.archived ? 'Desarquivar' : 'Arquivar';
+  const blockButton = chat.isGroup ? '' : '<button class="conversation-menu-item danger" data-action="block">Bloquear contato</button>';
+  return `
+    <div class="conversation-menu-wrapper" data-chat-id="${chat.id}">
+      <button type="button" class="conversation-menu-btn" data-chat-id="${chat.id}" aria-haspopup="true" aria-expanded="false">
+        <i class="fa-solid fa-ellipsis-vertical"></i>
+      </button>
+      <div class="conversation-menu hidden" role="menu">
+        ${blockButton}
+        <button class="conversation-menu-item" data-action="${archiveAction}">${archiveLabel} conversa</button>
+        <button class="conversation-menu-item" data-action="rename">Renomear contato</button>
+      </div>
+    </div>
+  `;
+}
+
+function attachConversationMenuHandlers(container, chat) {
+  const wrapper = container.querySelector(`.conversation-menu-wrapper[data-chat-id="${chat.id}"]`);
+  if (!wrapper) return;
+  const button = wrapper.querySelector('.conversation-menu-btn');
+  const menuItems = wrapper.querySelectorAll('.conversation-menu-item');
+  if (button) {
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      toggleConversationMenu(wrapper);
+    });
+  }
+  menuItems.forEach((item) => {
+    item.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const action = item.dataset.action;
+      closeConversationMenus();
+      handleConversationMenuAction(chat, action);
+    });
+  });
+}
+
+function toggleConversationMenu(wrapper) {
+  const menu = wrapper?.querySelector('.conversation-menu');
+  if (!menu) return;
+  if (activeConversationMenu && activeConversationMenu !== wrapper) {
+    const openedMenu = activeConversationMenu.querySelector('.conversation-menu');
+    if (openedMenu) {
+      openedMenu.classList.add('hidden');
+    }
+  }
+  const willOpen = menu.classList.contains('hidden');
+  if (willOpen) {
+    menu.classList.remove('hidden');
+    activeConversationMenu = wrapper;
+  } else {
+    menu.classList.add('hidden');
+    activeConversationMenu = null;
+  }
+}
+
+function closeConversationMenus() {
+  if (!activeConversationMenu) return;
+  const menu = activeConversationMenu.querySelector('.conversation-menu');
+  if (menu) {
+    menu.classList.add('hidden');
+  }
+  activeConversationMenu = null;
+}
+
+async function handleConversationMenuAction(chat, action) {
+  if (!chat || !action) return;
+  if (chat.source !== 'whatsapp') {
+    showNotification('Ação não disponível', 'Essas opções estão disponíveis apenas para conversas WhatsApp.');
+    return;
+  }
+
+  const deviceId = chat.deviceId || currentDeviceId || localStorage.getItem('currentDeviceId');
+  if (!deviceId) {
+    showNotification('Erro', 'Não foi possível identificar o dispositivo desta conversa.');
+    return;
+  }
+
+  switch (action) {
+    case 'archive':
+    case 'unarchive': {
+      const question = action === 'archive'
+        ? 'Tem certeza que deseja arquivar esta conversa no WhatsApp?'
+        : 'Deseja mover esta conversa de volta para a aba principal?';
+      if (!confirm(question)) return;
+      await submitConversationAction(chat, action, { deviceId });
+      break;
+    }
+    case 'block':
+      if (chat.isGroup) {
+        showNotification('Indisponível', 'Não é possível bloquear grupos.');
+        return;
+      }
+      if (!confirm('Deseja bloquear este contato no WhatsApp?')) return;
+      await submitConversationAction(chat, 'block', { deviceId });
+      break;
+    case 'rename': {
+      const suggestion = chat.name || chat.id;
+      const typedName = prompt('Digite o novo nome para este contato (deixe vazio para usar o nome do WhatsApp):', suggestion);
+      if (typedName === null) return;
+      await submitConversationAction(chat, 'rename', { deviceId, newName: typedName.trim() });
+      break;
+    }
+    default:
+      console.warn('Ação não tratada:', action);
+  }
+}
+
+async function submitConversationAction(chat, action, payload) {
+  try {
+    const body = {
+      chatId: chat.id,
+      action,
+      deviceId: payload.deviceId
+    };
+    if (action === 'rename') {
+      body.newName = payload.newName || '';
+    }
+
+    const response = await fetch('/api/conversations/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await response.json().catch(() => ({ success: false, error: 'Erro inesperado.' }));
+    if (!data.success) {
+      throw new Error(data.error || 'Falha ao executar ação.');
+    }
+    if (data.updates) {
+      applyConversationUpdates(chat.id, data.updates);
+    }
+
+    const successMessages = {
+      archive: 'Conversa arquivada com sucesso.',
+      unarchive: 'Conversa movida para a aba principal.',
+      block: 'Contato bloqueado no WhatsApp.',
+      rename: 'Nome atualizado para este contato.'
+    };
+    showNotification('Atendimento', successMessages[action] || 'Ação executada com sucesso.');
+  } catch (error) {
+    console.error('Erro ao executar ação de conversa:', error);
+    showNotification('Erro', error.message || 'Erro ao executar ação.');
+  }
+}
+
+function applyConversationUpdates(chatId, updates) {
+  if (!chatId || !updates) return;
+  if (!window.ultimaListaConversas) window.ultimaListaConversas = [];
+  const idx = window.ultimaListaConversas.findIndex(c => c.id === chatId);
+  if (idx === -1) return;
+  window.ultimaListaConversas[idx] = {
+    ...window.ultimaListaConversas[idx],
+    ...updates
+  };
+  localStorage.setItem('ultimaListaConversas', JSON.stringify(window.ultimaListaConversas));
+  renderConversations(window.ultimaListaConversas);
+  if (selectedChatId === chatId) {
+    refreshCurrentChatTitle();
+  }
+}
+
+function refreshCurrentChatTitle() {
+  if (!selectedChatId) return;
+  const chat = window.ultimaListaConversas?.find(c => c.id === selectedChatId);
+  if (!chat) return;
+  const chatTitle = document.getElementById('current-chat-title');
+  if (!chatTitle) return;
+  let sourceLabel = chat.source === 'chatbot' ? ' (Chatbot)' : ' (WhatsApp)';
+  if (chat.source === 'whatsapp' && chat.deviceId) {
+    sourceLabel += ` - ${chat.deviceId.substring(0, 8)}...`;
+  }
+  chatTitle.textContent = `${chat.name || 'Conversa'}${sourceLabel}`;
 }
 
 function selectChat(chatId, chatName, source) {
@@ -2126,6 +2349,7 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   ensureToastContainer();
   preloadNotificationSound();
+  initializeConversationTabs();
 
   // [MODIFICADO] Carrega os contatos iniciais da API em vez do localStorage.
   // O WebSocket cuidará das atualizações em tempo real.

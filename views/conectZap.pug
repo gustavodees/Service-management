@@ -50,9 +50,11 @@ block content
                 strong= device.last_connected ? new Date(device.last_connected).toLocaleString('pt-BR') : 'Nunca'
 
             //- Adicionado: Seção da barra de progresso (escondida por padrão)
-            .card-progress(id=`progress-container-${device.device_id}` style="display: none;")
+            .card-progress(id=`progress-container-${device.device_id}`)
               .progress-info
-                span.progress-label Sincronizando...
+                .progress-status
+                  i.fas.fa-sync-alt.progress-icon
+                  span.progress-message(id=`progress-message-${device.device_id}`) Preparando sincronização...
                 span.progress-percentage(id=`progress-text-${device.device_id}`) 0%
               .progress-bar
                 .progress-bar-fill(id=`progress-bar-${device.device_id}`)
@@ -79,184 +81,210 @@ block content
     script.
       document.addEventListener('DOMContentLoaded', function() {
         const addDeviceBtn = document.getElementById('add-new-device-btn');
+        const progressIntervals = {};
+
+        const getDeviceId = (element) => {
+          if (!element) return null;
+          return element.dataset.deviceId || element.closest('[data-device-id]')?.dataset.deviceId || element.closest('button')?.dataset.deviceId || null;
+        };
+
+        const getProgressElements = (deviceId) => {
+          const container = document.getElementById(`progress-container-${deviceId}`);
+          return {
+            container,
+            bar: document.getElementById(`progress-bar-${deviceId}`),
+            text: document.getElementById(`progress-text-${deviceId}`),
+            message: document.getElementById(`progress-message-${deviceId}`),
+            icon: container ? container.querySelector('.progress-icon') : null,
+          };
+        };
+
+        function resetProgress(deviceId) {
+          const els = getProgressElements(deviceId);
+          if (!els.container) return;
+          els.container.classList.remove('active', 'success', 'error');
+          if (els.bar) els.bar.style.width = '0%';
+          if (els.text) els.text.textContent = '0%';
+          if (els.message) els.message.textContent = 'Aguardando sincronização...';
+          if (els.icon) els.icon.className = 'fas fa-sync-alt progress-icon';
+        }
+
+        function setProgressState(deviceId, { progress = 0, message = 'Sincronizando...', state = 'running' }) {
+          const els = getProgressElements(deviceId);
+          if (!els.container) return;
+
+          const clamped = Math.min(100, Math.max(0, Math.round(progress)));
+          els.container.classList.add('active');
+          els.container.classList.remove('success', 'error');
+
+          if (state === 'success') {
+            els.container.classList.add('success');
+            if (els.icon) els.icon.className = 'fas fa-check-circle progress-icon';
+          } else if (state === 'error') {
+            els.container.classList.add('error');
+            if (els.icon) els.icon.className = 'fas fa-triangle-exclamation progress-icon';
+          } else {
+            if (els.icon) els.icon.className = 'fas fa-sync-alt fa-spin progress-icon';
+          }
+
+          if (els.bar) els.bar.style.width = `${clamped}%`;
+          if (els.text) els.text.textContent = `${clamped}%`;
+          if (els.message) els.message.textContent = message;
+        }
+
+        function hideProgress(deviceId, delay = 2500) {
+          setTimeout(() => resetProgress(deviceId), delay);
+        }
+
+        function clearMonitor(deviceId) {
+          if (progressIntervals[deviceId]) {
+            clearInterval(progressIntervals[deviceId]);
+            delete progressIntervals[deviceId];
+          }
+        }
+
+        async function monitorSyncProgress(taskId, deviceId) {
+          if (!taskId) return;
+          clearMonitor(deviceId);
+
+          const poll = async () => {
+            try {
+              const response = await fetch(`/whatsapp/sync-status/${taskId}`);
+              const data = await response.json();
+              const progress = typeof data.progress === 'number' ? data.progress : 0;
+              const message = data.message || 'Sincronizando conversas...';
+              const done = data.done === true || progress >= 100;
+              const errorMessage = data.error;
+
+              if (errorMessage) {
+                setProgressState(deviceId, { progress: 100, message: `Erro: ${errorMessage}`, state: 'error' });
+                clearMonitor(deviceId);
+                hideProgress(deviceId, 4000);
+                return;
+              }
+
+              setProgressState(deviceId, { progress: done ? 100 : progress, message, state: done ? 'success' : 'running' });
+
+              if (done) {
+                clearMonitor(deviceId);
+                hideProgress(deviceId);
+              }
+            } catch (error) {
+              console.error('Erro ao monitorar sincronização:', error);
+              setProgressState(deviceId, { progress: 100, message: 'Falha ao monitorar sincronização.', state: 'error' });
+              clearMonitor(deviceId);
+              hideProgress(deviceId, 4000);
+            }
+          };
+
+          await poll();
+          progressIntervals[deviceId] = setInterval(poll, 2500);
+        }
+
+        async function startManualSync(deviceId) {
+          try {
+            setProgressState(deviceId, { progress: 5, message: 'Iniciando sincronização...', state: 'running' });
+            const response = await fetch(`/whatsapp/start-sync/${deviceId}`, { method: 'POST' });
+            const payload = await response.json();
+            if (!response.ok || !payload.success || !payload.taskId) {
+              throw new Error(payload.error || 'Não foi possível iniciar a sincronização.');
+            }
+            monitorSyncProgress(payload.taskId, deviceId);
+          } catch (error) {
+            console.error('Erro ao iniciar sincronização:', error);
+            setProgressState(deviceId, { progress: 100, message: error.message || 'Erro ao iniciar sincronização.', state: 'error' });
+            hideProgress(deviceId, 4000);
+          }
+        }
+
         if (addDeviceBtn) {
           addDeviceBtn.addEventListener('click', () => {
-            // Redireciona para a página que inicia o processo de criação e QR Code
             window.location.href = '/whatsapp';
           });
         }
 
-        // Adicionado: Lógica para os botões de remover, conectar e desconectar
         document.querySelectorAll('.remove-btn').forEach(button => {
           button.addEventListener('click', async (event) => {
-            const deviceId = event.target.closest('button').dataset.deviceId;
-            if (confirm(`Tem certeza que deseja remover o dispositivo ${deviceId}? Esta ação não pode ser desfeita.`)) {
-              try {
-                const response = await fetch(`/whatsapp/remove-device?deviceId=${deviceId}`, { method: 'DELETE' });
-                const result = await response.json();
-                if (result.success) {
-                  alert('Dispositivo removido com sucesso!');
-                  window.location.reload();
-                } else {
-                  alert('Erro ao remover dispositivo: ' + (result.message || 'Erro desconhecido'));
-                }
-              } catch (error) {
-                alert('Erro de comunicação ao tentar remover o dispositivo.');
+            const deviceId = getDeviceId(event.currentTarget);
+            if (!deviceId) return;
+            if (!confirm(`Tem certeza que deseja remover o dispositivo ${deviceId}? Esta ação não pode ser desfeita.`)) {
+              return;
+            }
+            try {
+              const response = await fetch(`/whatsapp/remove-device?deviceId=${deviceId}`, { method: 'DELETE' });
+              const result = await response.json();
+              if (result.success) {
+                alert('Dispositivo removido com sucesso!');
+                window.location.reload();
+              } else {
+                alert('Erro ao remover dispositivo: ' + (result.message || 'Erro desconhecido'));
               }
+            } catch (error) {
+              alert('Erro de comunicação ao tentar remover o dispositivo.');
             }
           });
         });
 
         document.querySelectorAll('.connect-btn').forEach(button => {
           button.addEventListener('click', (event) => {
-            const deviceId = event.target.closest('button').dataset.deviceId;
-            // Redireciona para a página do QR Code com o deviceId específico
-            window.location.href = `/whatsapp?deviceId=${deviceId}`;
+            const deviceId = getDeviceId(event.currentTarget);
+            if (deviceId) {
+              window.location.href = `/whatsapp?deviceId=${deviceId}`;
+            }
           });
         });
 
-        // Adicionado: Lógica para o botão de desconectar
         document.querySelectorAll('.disconnect-btn').forEach(button => {
           button.addEventListener('click', async (event) => {
-            const deviceId = event.target.closest('button').dataset.deviceId;
-            if (confirm(`Tem certeza que deseja desconectar o dispositivo ${deviceId}? Você precisará escanear o QR Code novamente.`)) {
-              try {
-                const response = await fetch(`/whatsapp/disconnect-device?deviceId=${deviceId}`, { method: 'POST' });
-                const result = await response.json();
-                if (result.success) {
-                  alert('Dispositivo desconectado com sucesso!');
-                  window.location.reload();
-                } else {
-                  alert('Erro ao desconectar dispositivo: ' + (result.message || 'Erro desconhecido'));
-                }
-              } catch (error) {
-                alert('Erro de comunicação ao tentar desconectar o dispositivo.');
+            const deviceId = getDeviceId(event.currentTarget);
+            if (!deviceId) return;
+            if (!confirm(`Tem certeza que deseja desconectar o dispositivo ${deviceId}? Você precisará escanear o QR Code novamente.`)) {
+              return;
+            }
+            try {
+              const response = await fetch(`/whatsapp/disconnect-device?deviceId=${deviceId}`, { method: 'POST' });
+              const result = await response.json();
+              if (result.success) {
+                alert('Dispositivo desconectado com sucesso!');
+                window.location.reload();
+              } else {
+                alert('Erro ao desconectar dispositivo: ' + (result.message || 'Erro desconhecido'));
               }
+            } catch (error) {
+              alert('Erro de comunicação ao tentar desconectar o dispositivo.');
             }
           });
         });
 
-        // Adicionado: Lógica para o botão de sincronizar
         document.querySelectorAll('.sync-btn').forEach(button => {
           button.addEventListener('click', async (event) => {
-            const deviceId = event.target.closest('button').dataset.deviceId;
+            const deviceId = getDeviceId(event.currentTarget);
+            if (!deviceId) return;
             if (!confirm(`Iniciar a sincronização de contatos e mensagens para o dispositivo ${deviceId}?`)) {
               return;
             }
-
-            const progressContainer = document.getElementById(`progress-container-${deviceId}`);
-            const progressBar = document.getElementById(`progress-bar-${deviceId}`);
-            const progressText = document.getElementById(`progress-text-${deviceId}`);
-
-            progressContainer.style.display = 'block';
-            progressBar.style.width = '0%';
-            progressText.textContent = '0%';
-
-            try {
-              // 1. Inicia o processo no backend e obtém um ID da tarefa
-              const startResponse = await fetch(`/whatsapp/start-sync/${deviceId}`, { method: 'POST' });
-              const { taskId } = await startResponse.json();
-
-              // 2. Verifica o progresso periodicamente
-              const intervalId = setInterval(async () => {
-                const statusResponse = await fetch(`/whatsapp/sync-status/${taskId}`);
-                const { progress, message } = await statusResponse.json();
-
-                // 3. Atualiza a UI
-                progressBar.style.width = progress + '%';
-                progressText.textContent = progress + '%';
-
-                if (progress >= 100) {
-                  clearInterval(intervalId);
-                  progressText.textContent = "Concluído!";
-                  // Opcional: esconder a barra após um tempo
-                  setTimeout(() => { progressContainer.style.display = 'none'; alert('Sincronização concluída! Os contatos já devem aparecer na aba de Atendimento.'); }, 2000);
-                }
-              }, 3000); // Verifica a cada 3 segundos
-            } catch (error) {
-              console.error('Erro ao iniciar sincronização:', error);
-              alert('Não foi possível iniciar a sincronização. Verifique o console para mais detalhes.');
-              progressContainer.style.display = 'none';
-            }
+            await startManualSync(deviceId);
           });
         });
 
-        // Adicionado: Lógica para o botão de sincronizar
-        document.querySelectorAll('.sync-btn').forEach(button => {
-          button.addEventListener('click', async (event) => {
-            const deviceId = event.target.closest('button').dataset.deviceId;
-            if (!confirm(`Iniciar a sincronização de contatos e mensagens para o dispositivo ${deviceId}?`)) {
-              return;
-            }
-
-            const progressContainer = document.getElementById(`progress-container-${deviceId}`);
-            const progressBar = document.getElementById(`progress-bar-${deviceId}`);
-            const progressText = document.getElementById(`progress-text-${deviceId}`);
-
-            progressContainer.style.display = 'block';
-            progressBar.style.width = '0%';
-            progressText.textContent = '0%';
-
-            try {
-              // 1. Inicia o processo no backend e obtém um ID da tarefa
-              const startResponse = await fetch(`/whatsapp/start-sync/${deviceId}`, { method: 'POST' });
-              const { taskId } = await startResponse.json();
-
-              // 2. Verifica o progresso periodicamente
-              const intervalId = setInterval(async () => {
-                const statusResponse = await fetch(`/whatsapp/sync-status/${taskId}`);
-                const { progress, message } = await statusResponse.json();
-
-                // 3. Atualiza a UI
-                progressBar.style.width = progress + '%';
-                progressText.textContent = progress + '%';
-
-                if (progress >= 100) {
-                  clearInterval(intervalId);
-                  progressText.textContent = "Concluído!";
-                  // Opcional: esconder a barra após um tempo
-                  setTimeout(() => { progressContainer.style.display = 'none'; alert('Sincronização concluída! Os contatos já devem aparecer na aba de Atendimento.'); }, 2000);
-                }
-              }, 3000); // Verifica a cada 3 segundos
-            } catch (error) {
-              console.error('Erro ao iniciar sincronização:', error);
-              alert('Não foi possível iniciar a sincronização. Verifique o console para mais detalhes.');
-              progressContainer.style.display = 'none';
-            }
-          });
-        });
-
-        // --- ADICIONADO: Lógica para WebSocket ---
-        // Conecta ao WebSocket para receber atualizações em tempo real
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const ws = new WebSocket(`${wsProtocol}//${window.location.host}`);
 
         ws.onmessage = function(event) {
             const data = JSON.parse(event.data);
 
-            // Ouve o evento de início de sincronização automática
-            if (data.type === 'sync-started' && data.taskId) {
+            if (data.type === 'sync-started') {
                 const deviceId = data.deviceId;
-                console.log(`Sincronização automática iniciada para ${deviceId} com taskId ${data.taskId}`);
-
-                const progressContainer = document.getElementById(`progress-container-${deviceId}`);
-                const progressBar = document.getElementById(`progress-bar-${deviceId}`);
-                const progressText = document.getElementById(`progress-text-${deviceId}`);
-
-                if (progressContainer) {
-                    progressContainer.style.display = 'block';
-                    progressBar.style.width = '0%';
-                    progressText.textContent = '0%';
-
-                    // Inicia o monitoramento do progresso para esta tarefa
+                if (!deviceId) return;
+                setProgressState(deviceId, { progress: 5, message: 'Sincronização automática iniciada...', state: 'running' });
+                if (data.taskId) {
                     monitorSyncProgress(data.taskId, deviceId);
+                } else {
+                    hideProgress(deviceId, 3000);
                 }
             }
 
-            // Outros eventos de WebSocket podem ser tratados aqui (ex: status-change)
             if (data.type === 'whatsapp-connected' || data.type === 'disconnected') {
-                // Recarrega a página para refletir o novo status do dispositivo
-                // É uma abordagem simples mas eficaz.
                 console.log(`Status do dispositivo ${data.deviceId} alterado. Recarregando...`);
                 window.location.reload();
             }

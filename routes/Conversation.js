@@ -19,6 +19,10 @@ const Conversation = sequelize.define('Conversation', {
     type: DataTypes.STRING,
     allowNull: true
   },
+  custom_name: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
   profile_pic_url: {
     type: DataTypes.STRING,
     allowNull: true
@@ -34,6 +38,10 @@ const Conversation = sequelize.define('Conversation', {
   unread_count: {
     type: DataTypes.INTEGER,
     defaultValue: 0
+  },
+  archived: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
   },
   is_group: { type: DataTypes.BOOLEAN, defaultValue: false },
   source: { type: DataTypes.STRING, allowNull: true },

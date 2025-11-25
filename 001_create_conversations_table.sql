@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS `conversations` (
   `id` VARCHAR(255) NOT NULL,
   `empresa_id` INT NULL,
   `name` VARCHAR(255) NULL,
+  `custom_name` VARCHAR(255) NULL,
   `profile_pic_url` TEXT NULL,
   `last_message` TEXT NULL,
   `timestamp` DATETIME NULL,

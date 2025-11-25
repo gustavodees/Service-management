@@ -1,7 +1,5 @@
 const express = require('express');
 const router = express.Router();
-const sequelize = require('./banco');
-const { QueryTypes } = require('sequelize');
 const verificaAutenticacao = require('./verificaAutenticacao');
 const Tabulacao = require('./Tabulacao'); // Adicionado
 const whatsappManager = require('./whatsappManager'); // Adicionado
@@ -23,44 +21,29 @@ router.get('/contacts', verificaAutenticacao, async (req, res) => {
     }
 
     const empresaId = req.session.usuario.empresa_id;
-
-    // Query otimizada para buscar a última mensagem de cada conversa (chatId)
-    // para uma empresa específica.
-    const query = `
-      SELECT
-          m.chatId as id,
-          c.name,
-          c.profile_pic_url as profilePicUrl,
-          m.body as lastMessage,
-          (SELECT COUNT(*) FROM whatsapp_messages WHERE chatId = m.chatId AND fromMe = 0 AND empresa_id = :empresaId) as unreadCount,
-          c.is_group as isGroup,
-          'whatsapp' as source,
-          m.deviceId
-      FROM
-          whatsapp_messages m
-      LEFT JOIN
-          conversations c ON m.chatId = c.id
-      WHERE
-          m.id IN (
-              SELECT
-                  MAX(id)
-              FROM
-                  whatsapp_messages
-              WHERE
-                empresa_id = :empresaId
-              GROUP BY
-                  chatId
-          )
-      ORDER BY
-          m.timestamp DESC;
-    `;
-
-    const contacts = await sequelize.query(query, {
-      replacements: { empresaId },
-      type: QueryTypes.SELECT
+    const conversations = await Conversation.findAll({
+      where: { empresa_id: empresaId },
+      order: [['timestamp', 'DESC']]
     });
 
-    console.log(`[API /contacts] Query retornou ${contacts.length} contatos para a empresa ${empresaId}.`);
+    const contacts = conversations.map(conv => {
+      const timestampValue = conv.timestamp ? new Date(conv.timestamp).getTime() : null;
+      const rawId = conv.id || '';
+      const fallbackName = rawId.includes('@') ? rawId.split('@')[0] : rawId;
+      return {
+        id: rawId,
+        name: conv.name || fallbackName || 'Contato',
+        profilePicUrl: conv.profile_pic_url || null,
+        lastMessage: conv.last_message || '',
+        timestamp: timestampValue,
+        unreadCount: conv.unread_count || 0,
+        isGroup: !!conv.is_group,
+        archived: !!conv.archived,
+        source: conv.source || 'whatsapp',
+        deviceId: conv.device_id || null
+      };
+    });
+
     res.json(contacts);
 
   } catch (error) {
@@ -203,6 +186,64 @@ router.get('/media', verificaAutenticacao, async (req, res) => {
   } catch (error) {
     console.error('Erro ao buscar mídia sob demanda:', error);
     res.status(500).json({ success: false, error: 'Erro interno do servidor.' });
+  }
+});
+
+/**
+ * Rota: POST /api/conversations/action
+ * Executa ações rápidas (arquivar, bloquear, renomear) em conversas do WhatsApp.
+ */
+router.post('/conversations/action', verificaAutenticacao, async (req, res) => {
+  try {
+    const { action, chatId, deviceId, newName } = req.body || {};
+    const sessionUser = req.session?.usuario;
+    const empresaId = sessionUser?.empresa_id;
+
+    if (!empresaId) {
+      return res.status(401).json({ success: false, error: 'Empresa não identificada.' });
+    }
+    if (!chatId || !action) {
+      return res.status(400).json({ success: false, error: 'chatId e action são obrigatórios.' });
+    }
+
+    const conversation = await Conversation.findOne({ where: { id: chatId, empresa_id: empresaId } });
+    if (!conversation) {
+      return res.status(404).json({ success: false, error: 'Conversa não encontrada.' });
+    }
+    if (conversation.source !== 'whatsapp') {
+      return res.status(400).json({ success: false, error: 'Ação disponível apenas para conversas WhatsApp.' });
+    }
+
+    const resolvedDeviceId = deviceId || conversation.device_id;
+    if (!resolvedDeviceId) {
+      return res.status(400).json({ success: false, error: 'Dispositivo não encontrado para a conversa.' });
+    }
+
+    let result;
+    switch (action) {
+      case 'archive':
+        result = await whatsappManager.setChatArchiveState(resolvedDeviceId, chatId, true, empresaId);
+        break;
+      case 'unarchive':
+        result = await whatsappManager.setChatArchiveState(resolvedDeviceId, chatId, false, empresaId);
+        break;
+      case 'block':
+        if (conversation.is_group) {
+          return res.status(400).json({ success: false, error: 'Não é possível bloquear grupos.' });
+        }
+        result = await whatsappManager.setContactBlockState(resolvedDeviceId, chatId, true, empresaId);
+        break;
+      case 'rename':
+        result = await whatsappManager.renameConversation(resolvedDeviceId, chatId, newName, empresaId, conversation.toJSON ? conversation.toJSON() : conversation);
+        break;
+      default:
+        return res.status(400).json({ success: false, error: 'Ação inválida.' });
+    }
+
+    res.json({ success: true, updates: result?.update || {} });
+  } catch (error) {
+    console.error('Erro ao executar ação da conversa:', error);
+    res.status(500).json({ success: false, error: error.message || 'Erro ao executar ação.' });
   }
 });
 
