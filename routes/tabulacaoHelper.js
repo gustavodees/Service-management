@@ -17,14 +17,14 @@ function buildEmptyTabMap() {
   return tab;
 }
 
-async function getTabulacoesGrouped({ scope, userIdParam, session }) {
+async function getTabulacoesGrouped({ scope, userIdParam, session, empresaIdOverride = null }) {
   if (!session || !session.usuario) {
     const err = new Error('Sessão não encontrada. Faça login novamente.');
     err.status = 401;
     throw err;
   }
 
-  const empresaId = session.usuario.empresa_id;
+  const empresaId = empresaIdOverride || session.impersonateEmpresaId || session.usuario.empresa_id;
   if (!empresaId) {
     const err = new Error('Empresa não identificada.');
     err.status = 401;

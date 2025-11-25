@@ -1,7 +1,0 @@
-2025/11/18-20:43:43.207 7af4 Creating DB C:\Service-management\routes\sessions\session-device-b6d81f4a-5bc4-4c8b-976c-a5635b53f08f\Default\Local Storage\leveldb since it was missing.
-2025/11/18-20:43:43.220 7af4 Reusing MANIFEST C:\Service-management\routes\sessions\session-device-b6d81f4a-5bc4-4c8b-976c-a5635b53f08f\Default\Local Storage\leveldb/MANIFEST-000001
-2025/11/18-20:43:43.220 7af4 Recovering log #3
-2025/11/18-20:43:43.221 7af4 Reusing old log C:\Service-management\routes\sessions\session-device-b6d81f4a-5bc4-4c8b-976c-a5635b53f08f\Default\Local Storage\leveldb/000003.log 
-2025/11/18-20:45:43.547 2f74 Level-0 table #5: started
-2025/11/18-20:45:43.551 2f74 Level-0 table #5: 21159 bytes OK
-2025/11/18-20:45:43.553 2f74 Delete type=0 #3

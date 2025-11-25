@@ -33,7 +33,7 @@ const Tabulacao = require('./routes/Tabulacao');
 const Conversation = require('./routes/Conversation'); // <<< ADICIONADO
 const WhatsappMessage = require('./routes/WhatsappMessage');
 const WhatsappMedia = require('./routes/WhatsappMedia');
-const ActivityLog = require('./routes/ActivityLog'); // Adicionado
+const logActivity = require('./utils/logActivity');
 
 var indexRouter = require('./routes/index');
 var usersRouter = require('./routes/users');
@@ -396,12 +396,12 @@ app.post('/cadastro',
       await Usuario.create({ nome, email, senha: senhaHash, tipo, empresa_id: req.session.usuario.empresa_id });
       
       // Adicionado: Registrar a criação de usuário no log
-      await ActivityLog.create({
-        user_id: req.session.usuario.id,
-        empresa_id: req.session.usuario.empresa_id,
+      await logActivity({
+        userId: req.session.usuario.id,
+        empresaId: req.session.usuario.empresa_id,
         action: 'USER_CREATED',
         details: `O admin '${req.session.usuario.nome}' criou o usuário '${nome}' (${email}).`,
-        ip_address: req.ip
+        ipAddress: req.ip
       });
 
       res.render('cadastro', { success: 'Usuário cadastrado com sucesso!', usuarioTipo: req.session.usuario.tipo });
@@ -459,6 +459,17 @@ app.post('/editar-usuario/:id',
       }
 
       await usuario.update(dadosUpdate);
+
+      const changedFields = Object.keys(dadosUpdate).filter(field => field !== 'senha');
+      const fieldsLabel = changedFields.length ? changedFields.join(', ') : 'dados gerais';
+      const passwordLabel = senha ? ' e redefiniu a senha' : '';
+      await logActivity({
+        userId: req.session.usuario.id,
+        empresaId: req.session.usuario.empresa_id,
+        action: 'USER_UPDATED',
+        details: `O admin '${req.session.usuario.nome}' atualizou ${fieldsLabel}${passwordLabel} do usuário '${usuario.nome}' (ID: ${usuario.id}).`,
+        ipAddress: req.ip
+      });
       res.redirect('/usuariocadastrado'); // Redireciona de volta para a lista
     } catch (error) {
       console.error('Erro ao salvar usuário:', error);
@@ -520,16 +531,24 @@ app.post('/meu-perfil',
         dadosUpdate.senha = await bcrypt.hash(nova_senha, 10);
 
         // Adicionado: Registrar a alteração de senha no log de atividades
-        await ActivityLog.create({
-          user_id: usuario.id,
-          empresa_id: usuario.empresa_id,
+        await logActivity({
+          userId: usuario.id,
+          empresaId: usuario.empresa_id,
           action: 'PASSWORD_CHANGE_SELF',
           details: `O usuário '${usuario.nome}' (ID: ${usuario.id}) alterou a própria senha.`,
-          ip_address: req.ip
+          ipAddress: req.ip
         });
       }
 
       await usuario.update(dadosUpdate);
+
+      await logActivity({
+        userId: usuario.id,
+        empresaId: usuario.empresa_id,
+        action: 'PROFILE_UPDATED',
+        details: `O usuário '${usuario.nome}' atualizou o próprio perfil${nova_senha ? ' (com redefinição de senha)' : ''}.`,
+        ipAddress: req.ip
+      });
 
       // Busca o usuário atualizado para exibir na página
       const usuarioAtualizado = await Usuario.findByPk(req.session.usuario.id);
@@ -590,6 +609,14 @@ app.post('/whatsapp/new-device', verificaAutenticacao, async (req, res) => {
       empresa_id: req.session.usuario.empresa_id,
       status: 'disconnected'
     });
+
+    await logActivity({
+      userId: req.session.usuario.id,
+      empresaId: req.session.usuario.empresa_id,
+      action: 'WHATSAPP_DEVICE_CREATED',
+      details: `Dispositivo '${deviceId}' criado para o usuário '${req.session.usuario.nome}'.`,
+      ipAddress: req.ip
+    });
     res.json({ success: true, deviceId });
   } catch (error) {
     console.error('Erro ao criar novo dispositivo:', error);
@@ -607,6 +634,13 @@ app.post('/whatsapp/start/:deviceId', verificaAutenticacao, async (req, res) => 
     return res.status(403).json({ success: false, error: 'Dispositivo não encontrado ou não autorizado.' });
   }
   whatsappManager.initializeClient(deviceId, empresa_id);
+  await logActivity({
+    userId: req.session.usuario.id,
+    empresaId: empresa_id,
+    action: 'WHATSAPP_DEVICE_START',
+    details: `Solicitado start do dispositivo '${deviceId}'.`,
+    ipAddress: req.ip
+  });
   res.json({ success: true, message: 'Inicialização solicitada.' });
 });
 
@@ -652,6 +686,14 @@ app.delete('/whatsapp/remove-device', verificaAutenticacao, async (req, res) => 
     // A lógica de desconexão e limpeza agora está centralizada no whatsappManager.
     await whatsappManager.disconnectClient(deviceId);
 
+    await logActivity({
+      userId: userId,
+      empresaId: empresa_id,
+      action: 'WHATSAPP_DEVICE_REMOVED',
+      details: `Dispositivo '${deviceId}' removido por '${req.session.usuario.nome}'.`,
+      ipAddress: req.ip
+    });
+
     res.json({ success: true, message: 'Dispositivo e todos os dados associados foram removidos com sucesso.' });
   } catch (error) {
     console.error('Erro ao remover dispositivo:', error);
@@ -674,6 +716,13 @@ app.post('/whatsapp/disconnect-device', verificaAutenticacao, async (req, res) =
       return res.status(403).json({ success: false, message: 'Dispositivo não encontrado ou não autorizado.' });
     }
     await whatsappManager.disconnectClient(deviceId);
+    await logActivity({
+      userId: req.session.usuario.id,
+      empresaId: empresa_id,
+      action: 'WHATSAPP_DEVICE_DISCONNECT',
+      details: `Solicitada desconexão do dispositivo '${deviceId}'.`,
+      ipAddress: req.ip
+    });
     res.json({ success: true, message: 'Solicitação de desconexão enviada.' });
   } catch (error) {
     console.error('Erro ao desconectar dispositivo:', error);

@@ -5,12 +5,34 @@ const verificaAutenticacao = require('./verificaAutenticacao');
 const Usuario = require('./Usuario');
 const Tabulacao = require('./Tabulacao'); // ADICIONE ESTA LINHA
 const { getTabulacoesGrouped } = require('./tabulacaoHelper');
+const { Op } = require('sequelize');
+const logActivity = require('../utils/logActivity');
 
 // === ADICIONAR ===
 const ChatbotDevice = require('./chatbotDevice'); // remove devices vinculados ao usuário
 const sequelizeUser = require('./banco'); // para transações
 const chatbotModule = require('./chatbot'); // <<< ADICIONADO
 // === FIM ADIÇÃO ===
+
+async function getSelectableUsers(sessionUser) {
+  if (!sessionUser || !['admin', 'super_admin'].includes(sessionUser.tipo)) {
+    return [];
+  }
+
+  const whereClause = {};
+  if (sessionUser.empresa_id) {
+    whereClause.empresa_id = sessionUser.empresa_id;
+  }
+  if (sessionUser.id) {
+    whereClause.id = { [Op.ne]: sessionUser.id };
+  }
+
+  return Usuario.findAll({
+    where: whereClause,
+    attributes: ['id', 'nome'],
+    order: [['nome', 'ASC']]
+  });
+}
 
 /* GET users listing. */
 router.get('/', verificaAutenticacao, function(req, res, next) {
@@ -113,6 +135,14 @@ router.post('/despara/enviar', verificaAutenticacao, async (req, res) => {
 
     // Salva “último disparo” para o device (chama função de cada módulo se existir)
 
+    await logActivity({
+      userId: req.session.usuario.id,
+      empresaId: req.session.usuario.empresa_id,
+      action: 'MASS_MESSAGE_DISPATCH',
+      details: `Disparo (${chosenDeviceType}:${chosenDeviceId}) com ${enviados} enviados, ${pulados} pulados de ${numerosArray.length} números.`,
+      ipAddress: req.ip
+    });
+
     res.json({
       message: `Mensagens enviadas via device ${chosenDeviceType}:${chosenDeviceId}`,
       total: enviados,
@@ -183,7 +213,7 @@ router.get('/tabulacao', verificaAutenticacao, function(req, res, next) {
 /* GET Tabulação page com usuário específico (admin impersona) */
 router.get('/tabulacao/:id', verificaAutenticacao, async (req, res) => {
   try {
-    if (!req.session.usuario || req.session.usuario.tipo !== 'admin') {
+    if (!req.session.usuario || !['admin', 'super_admin'].includes(req.session.usuario.tipo)) {
       return res.status(403).render('error', { message: 'Acesso negado', error: {} });
     }
     const alvoId = parseInt(req.params.id, 10);
@@ -193,6 +223,10 @@ router.get('/tabulacao/:id', verificaAutenticacao, async (req, res) => {
     const alvo = await Usuario.findByPk(alvoId);
     if (!alvo) {
       return res.status(404).render('error', { message: 'Usuário não encontrado', error: {} });
+    }
+
+    if (req.session.usuario.tipo === 'admin' && req.session.usuario.empresa_id && alvo.empresa_id !== req.session.usuario.empresa_id) {
+      return res.status(403).render('error', { message: 'Acesso negado', error: {} });
     }
 
     // Marcar a sessão para impersonar este usuário na tabulação
@@ -211,29 +245,35 @@ router.get('/tabulacao/:id', verificaAutenticacao, async (req, res) => {
 });
 
 /* GET Gráfico page. */
-router.get('/grafico', verificaAutenticacao, function(req, res) {
-  // se o admin estava visualizando o gráfico de um funcionário, sair do modo de impersonação
+router.get('/grafico', verificaAutenticacao, async function(req, res) {
   if (req.session && req.session.impersonateUserId) {
     delete req.session.impersonateUserId;
   }
 
-  // renderiza o gráfico para o usuário atual (ou admin vendo seu próprio gráfico)
-  const usuarioTipo = req.session.usuario ? req.session.usuario.tipo : null;
-  const usuarioNome = req.session.usuario ? req.session.usuario.nome : null;
-  const usuarioId = req.session.usuario ? req.session.usuario.id : null;
+  const usuario = req.session.usuario || {};
+  const usuarioTipo = usuario.tipo || null;
+  const usuarioNome = usuario.nome || null;
+  const usuarioId = usuario.id || null;
+
+  let usuariosDisponiveis = [];
+  try {
+    usuariosDisponiveis = await getSelectableUsers(usuario);
+  } catch (e) {
+    console.warn('Falha ao buscar usuários disponíveis para o gráfico:', e && e.message ? e.message : e);
+  }
 
   res.render('grafico', { 
     usuarioTipo,
     usuarioNome,
-    usuarioId
+    usuarioId,
+    usuariosDisponiveis
   });
 });
 
 /* GET Gráfico para usuário específico (admin visualiza outro usuário) */
 router.get('/grafico/:id', verificaAutenticacao, async (req, res) => {
   try {
-    // só admins podem abrir o gráfico de outro usuário
-    if (!req.session.usuario || req.session.usuario.tipo !== 'admin') {
+    if (!req.session.usuario || !['admin', 'super_admin'].includes(req.session.usuario.tipo)) {
       return res.status(403).render('error', { message: 'Acesso negado', error: {} });
     }
 
@@ -247,13 +287,25 @@ router.get('/grafico/:id', verificaAutenticacao, async (req, res) => {
       return res.status(404).render('error', { message: 'Usuário não encontrado', error: {} });
     }
 
+    if (req.session.usuario.tipo === 'admin' && req.session.usuario.empresa_id && alvo.empresa_id !== req.session.usuario.empresa_id) {
+      return res.status(403).render('error', { message: 'Acesso negado', error: {} });
+    }
+
+    let usuariosDisponiveis = [];
+    try {
+      usuariosDisponiveis = await getSelectableUsers(req.session.usuario);
+    } catch (e) {
+      console.warn('Falha ao buscar usuários disponíveis para o gráfico:', e && e.message ? e.message : e);
+    }
+
     // Renderiza a view informando que o admin está visualizando o gráfico daquele usuário
     // `impersonating` ficará disponível no client (grafico.pug já expõe window.__impersonating)
     res.render('grafico', {
       usuarioTipo: req.session.usuario ? req.session.usuario.tipo : null,
       usuarioNome: alvo.nome,
       usuarioId: alvo.id,
-      impersonating: { id: alvo.id, nome: alvo.nome }
+      impersonating: { id: alvo.id, nome: alvo.nome },
+      usuariosDisponiveis
     });
   } catch (e) {
     console.error('Erro ao carregar gráfico por usuário:', e);
@@ -266,21 +318,46 @@ router.get('/grafico-data', verificaAutenticacao, async (req, res) => {
   try {
     const scope = req.query.scope || null;
     const userIdParam = req.query.userId ? parseInt(req.query.userId, 10) : null;
+    const sessionUser = req.session.usuario;
+    const isAdmin = sessionUser && sessionUser.tipo === 'admin';
+    const isSuperAdmin = sessionUser && sessionUser.tipo === 'super_admin';
 
     if (Number.isNaN(userIdParam)) {
       return res.status(400).json({ success: false, message: 'ID do usuário inválido' });
     }
 
     if (scope === 'team') {
-      if (!req.session.usuario || req.session.usuario.tipo !== 'admin') {
+      if (!isAdmin && !isSuperAdmin) {
         return res.status(403).json({ success: false, message: 'Acesso negado' });
       }
+      if (!sessionUser.empresa_id) {
+        return res.status(400).json({ success: false, message: 'Associe-se a uma empresa para visualizar o desempenho da equipe.' });
+      }
+    }
+
+    let empresaIdOverride = null;
+    if (userIdParam) {
+      const alvo = await Usuario.findByPk(userIdParam, { attributes: ['id', 'empresa_id'] });
+      if (!alvo) {
+        return res.status(404).json({ success: false, message: 'Usuário não encontrado.' });
+      }
+      if (isAdmin && sessionUser.empresa_id && sessionUser.empresa_id !== alvo.empresa_id) {
+        return res.status(403).json({ success: false, message: 'Você não pode visualizar dados de outra empresa.' });
+      }
+      if (!sessionUser.empresa_id) {
+        empresaIdOverride = alvo.empresa_id;
+      }
+    }
+
+    if (!sessionUser.empresa_id && !empresaIdOverride) {
+      return res.status(400).json({ success: false, message: 'Empresa não identificada para coletar dados.' });
     }
 
     const { tab } = await getTabulacoesGrouped({
       scope,
       userIdParam,
-      session: req.session
+      session: req.session,
+      empresaIdOverride
     });
 
     res.json({ success: true, tabulacoes: tab });
@@ -305,6 +382,7 @@ router.delete('/deletar-usuario/:id', verificaAutenticacao, async (req, res) => 
   }
 
   try {
+    let deletedUserInfo = null;
     await sequelizeUser.transaction(async (t) => {
       // Verifica existência
       const alvo = await Usuario.findByPk(alvoId, { transaction: t });
@@ -313,6 +391,12 @@ router.delete('/deletar-usuario/:id', verificaAutenticacao, async (req, res) => 
         err.code = 404;
         throw err;
       }
+
+      deletedUserInfo = {
+        id: alvo.id,
+        nome: alvo.nome,
+        email: alvo.email
+      };
 
       // Remove tabulações vinculadas
       await Tabulacao.destroy({ where: { user_id: alvoId }, transaction: t });
@@ -345,6 +429,16 @@ router.delete('/deletar-usuario/:id', verificaAutenticacao, async (req, res) => 
     } catch (memErr) {
       console.warn('Falha ao limpar dados em memória do whatsapp (não crítico):', memErr);
     }
+
+    await logActivity({
+      userId: req.session.usuario.id,
+      empresaId: req.session.usuario.empresa_id,
+      action: 'USER_DELETED',
+      details: deletedUserInfo
+        ? `O admin '${req.session.usuario.nome}' deletou o usuário '${deletedUserInfo.nome}' (ID: ${deletedUserInfo.id}, email: ${deletedUserInfo.email}).`
+        : `O admin '${req.session.usuario.nome}' deletou um usuário (ID: ${alvoId}).`,
+      ipAddress: req.ip
+    });
 
     return res.json({ success: true, message: 'Usuário e dados relacionados removidos.' });
   } catch (err) {

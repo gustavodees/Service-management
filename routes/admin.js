@@ -14,6 +14,7 @@ const WhatsappMessage = require('./WhatsappMessage');
 const WhatsappMedia = require('./WhatsappMedia');
 const Tabulacao = require('./Tabulacao');
 const ActivityLog = require('./ActivityLog'); // Adicionado
+const logActivity = require('../utils/logActivity');
 const verificaAcessoMestre = require('./verificaAcessoMestre'); // <<< ADICIONADO
 
 // --- MEDIDAS DE SEGURANÇA PARA ROTAS ADMIN ---
@@ -166,6 +167,13 @@ router.post('/aprovar-empresa/:id', verificaAutenticacao, verificaAcessoMestre, 
     const empresa = await Empresa.findByPk(req.params.id);
     if (empresa) {
       await empresa.update({ status: 2 }); // 2 = aprovado
+      await logActivity({
+        userId: req.session.usuario.id,
+        empresaId: req.session.usuario.empresa_id,
+        action: 'COMPANY_APPROVED',
+        details: `Empresa '${empresa.nome_fantasia}' (ID: ${empresa.id}) aprovada por '${req.session.usuario.nome}'.`,
+        ipAddress: req.ip
+      });
     }
     res.redirect('/admin/aprovar-empresas');
   } catch (error) {
@@ -180,6 +188,13 @@ router.post('/rejeitar-empresa/:id', verificaAutenticacao, verificaAcessoMestre,
     const empresa = await Empresa.findByPk(req.params.id);
     if (empresa) {
       await empresa.update({ status: -2 }); // -2 = rejeitado
+      await logActivity({
+        userId: req.session.usuario.id,
+        empresaId: req.session.usuario.empresa_id,
+        action: 'COMPANY_REJECTED',
+        details: `Empresa '${empresa.nome_fantasia}' (ID: ${empresa.id}) rejeitada por '${req.session.usuario.nome}'.`,
+        ipAddress: req.ip
+      });
     }
     res.redirect('/admin/aprovar-empresas');
   } catch (error) {
@@ -237,6 +252,13 @@ router.post('/editar-empresa/:id', verificaAutenticacao, verificaAcessoMestre, a
         cnpj: cnpj.replace(/[.\-/]/g, ''),
         status: parseInt(status, 10)
       });
+      await logActivity({
+        userId: req.session.usuario.id,
+        empresaId: req.session.usuario.empresa_id,
+        action: 'COMPANY_UPDATED',
+        details: `Empresa '${empresa.nome_fantasia}' (ID: ${empresa.id}) atualizada por '${req.session.usuario.nome}'.`,
+        ipAddress: req.ip
+      });
     }
     res.redirect('/admin/gerenciar-empresas');
   } catch (error) {
@@ -253,6 +275,14 @@ router.post('/alternar-status-empresa/:id', verificaAutenticacao, verificaAcesso
       // Alterna entre aprovado (2) e bloqueado (-1)
       const novoStatus = empresa.status === 2 ? -1 : 2;
       await empresa.update({ status: novoStatus });
+      const statusLabel = novoStatus === 2 ? 'desbloqueada' : 'bloqueada';
+      await logActivity({
+        userId: req.session.usuario.id,
+        empresaId: req.session.usuario.empresa_id,
+        action: 'COMPANY_STATUS_TOGGLED',
+        details: `Empresa '${empresa.nome_fantasia}' (ID: ${empresa.id}) ${statusLabel} por '${req.session.usuario.nome}'.`,
+        ipAddress: req.ip
+      });
     }
     res.redirect('/admin/gerenciar-empresas');
   } catch (error) {
@@ -271,6 +301,11 @@ router.post('/remover-empresa/:id', verificaAutenticacao, verificaAcessoMestre, 
       await t.rollback();
       return res.status(404).send('Empresa não encontrada');
     }
+    const empresaInfo = {
+      id: empresa.id,
+      nome: empresa.nome_fantasia,
+      cnpj: empresa.cnpj
+    };
 
     // Coleta IDs dos usuários da empresa
     const usuarios = await Usuario.findAll({ where: { empresa_id: id }, attributes: ['id'], transaction: t });
@@ -289,6 +324,13 @@ router.post('/remover-empresa/:id', verificaAutenticacao, verificaAcessoMestre, 
     await empresa.destroy({ transaction: t });
 
     await t.commit();
+    await logActivity({
+      userId: req.session.usuario.id,
+      empresaId: req.session.usuario.empresa_id,
+      action: 'COMPANY_REMOVED',
+      details: `Empresa '${empresaInfo.nome}' (ID: ${empresaInfo.id}) removida por '${req.session.usuario.nome}'.`,
+      ipAddress: req.ip
+    });
     res.redirect('/admin/gerenciar-empresas');
   } catch (error) {
     await t.rollback();

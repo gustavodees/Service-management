@@ -6,6 +6,7 @@ const whatsappManager = require('./whatsappManager'); // Adicionado
 const WhatsappMedia = require('./WhatsappMedia'); // Adicionado
 const Conversation = require('./Conversation');
 const { getTabulacoesGrouped } = require('./tabulacaoHelper');
+const logActivity = require('../utils/logActivity');
 
 /**
  * Rota: GET /api/contacts
@@ -111,6 +112,14 @@ router.post('/tabular', verificaAutenticacao, async (req, res) => {
       data_aniversariante: aniversarioData,
     });
 
+    await logActivity({
+      userId,
+      empresaId: empresa_id,
+      action: 'TABULACAO_CREATED',
+      details: `Chat ${chatId} tabulado como '${tabulacao}'.`,
+      ipAddress: req.ip
+    });
+
     // Notifica o frontend que o chat foi tabulado para que a UI possa ser atualizada
     whatsappManager.notifyChatTabulated(chatId, empresa_id);
 
@@ -137,7 +146,17 @@ router.post('/tabulacoes/retornar', verificaAutenticacao, async (req, res) => {
       return res.status(401).json({ success: false, error: 'Empresa não identificada.' });
     }
 
-    await Tabulacao.destroy({ where: { chatId, empresa_id } });
+    const removedCount = await Tabulacao.destroy({ where: { chatId, empresa_id } });
+
+    if (removedCount > 0) {
+      await logActivity({
+        userId: req.session.usuario.id,
+        empresaId: empresa_id,
+        action: 'TABULACAO_RETURNED',
+        details: `Chat ${chatId} retornado ao atendimento (tabulações removidas: ${removedCount}).`,
+        ipAddress: req.ip
+      });
+    }
 
     const contact = await Conversation.findOne({ where: { id: chatId, empresa_id }, raw: true });
     const contactPayload = contact ? {
@@ -220,24 +239,45 @@ router.post('/conversations/action', verificaAutenticacao, async (req, res) => {
     }
 
     let result;
+    let actionLabel = '';
+    const contactLabel = conversation.name || chatId.replace('@c.us', '');
+    let detailMessage = '';
     switch (action) {
       case 'archive':
         result = await whatsappManager.setChatArchiveState(resolvedDeviceId, chatId, true, empresaId);
+        actionLabel = 'CONVERSATION_ARCHIVED';
+        detailMessage = `Conversa '${contactLabel}' (${chatId}) arquivada.`;
         break;
       case 'unarchive':
         result = await whatsappManager.setChatArchiveState(resolvedDeviceId, chatId, false, empresaId);
+        actionLabel = 'CONVERSATION_UNARCHIVED';
+        detailMessage = `Conversa '${contactLabel}' (${chatId}) desarquivada.`;
         break;
       case 'block':
         if (conversation.is_group) {
           return res.status(400).json({ success: false, error: 'Não é possível bloquear grupos.' });
         }
         result = await whatsappManager.setContactBlockState(resolvedDeviceId, chatId, true, empresaId);
+        actionLabel = 'CONTACT_BLOCKED';
+        detailMessage = `Contato '${contactLabel}' (${chatId}) bloqueado.`;
         break;
       case 'rename':
         result = await whatsappManager.renameConversation(resolvedDeviceId, chatId, newName, empresaId, conversation.toJSON ? conversation.toJSON() : conversation);
+        actionLabel = 'CONVERSATION_RENAMED';
+        detailMessage = `Conversa '${contactLabel}' (${chatId}) renomeada para '${newName}'.`;
         break;
       default:
         return res.status(400).json({ success: false, error: 'Ação inválida.' });
+    }
+
+    if (actionLabel && sessionUser?.id) {
+      await logActivity({
+        userId: sessionUser.id,
+        empresaId: empresaId,
+        action: actionLabel,
+        details: detailMessage,
+        ipAddress: req.ip
+      });
     }
 
     res.json({ success: true, updates: result?.update || {} });

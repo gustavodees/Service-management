@@ -8,7 +8,7 @@ block head
 
 block content
   include header
-  .page-container
+  .page-container.usuarios-page
     .page-header
       div
         h1.page-title Usuários Cadastrados
@@ -38,6 +38,10 @@ block content
                   span(class=`user-type ${usuario.tipo}`)= usuario.tipo
                 td
                   .action-buttons
+                    a.btn-action.btn-graph(href=`/users/grafico/${usuario.id}`, title="Ver gráfico de tabulações")
+                      span Ver Gráfico
+                    a.btn-action.btn-tab(href=`/users/tabulacao/${usuario.id}`, title="Tabulações do usuário")
+                      span Tabulações
                     a.btn-action.btn-edit(href=`/editar-usuario/${usuario.id}`) Editar
                     button.btn-action.btn-delete(onclick=`deletarUsuario(${usuario.id})`) Deletar
       else

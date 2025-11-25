@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Usuario = require('./Usuario');
-const ActivityLog = require('./ActivityLog'); // Adicionado
+const logActivity = require('../utils/logActivity');
 const Empresa = require('./Empresa'); // Importar o modelo Empresa
 const sequelize = require('./banco'); // Importar a instância do Sequelize
 const bcrypt = require('bcrypt');
@@ -69,13 +69,12 @@ router.post('/login', loginLimiter, async (req, res) => {
         
         req.session.usuario = userData;
 
-        // Adicionado: Registrar login no log de atividades
-        await ActivityLog.create({
-          user_id: usuario.id,
-          empresa_id: null,
+        await logActivity({
+          userId: usuario.id,
+          empresaId: null,
           action: 'LOGIN_SUCCESS_MASTER',
           details: `Login de Mestre bem-sucedido para '${usuario.nome}'.`,
-          ip_address: req.ip
+          ipAddress: req.ip
         });
 
         // CORREÇÃO: Se o usuário for 'super_admin', redireciona para o novo dashboard.
@@ -152,13 +151,12 @@ router.post('/login', loginLimiter, async (req, res) => {
 
       req.session.usuario = userData;
 
-      // Adicionado: Registrar login no log de atividades
-      await ActivityLog.create({
-        user_id: usuario.id,
-        empresa_id: usuario.empresa_id,
+      await logActivity({
+        userId: usuario.id,
+        empresaId: usuario.empresa_id,
         action: 'LOGIN_SUCCESS',
         details: `Login bem-sucedido para '${usuario.nome}' na empresa '${empresa.nome_fantasia}'.`,
-        ip_address: req.ip
+        ipAddress: req.ip
       });
 
       res.redirect('/conectZap');
@@ -170,13 +168,22 @@ router.post('/login', loginLimiter, async (req, res) => {
 });
 
 /* GET logout */
-router.get('/logout', (req, res) => {
+router.get('/logout', async (req, res) => {
   if (req.session.usuario) {
+    const userInfo = { ...req.session.usuario };
+    await logActivity({
+      userId: userInfo.id,
+      empresaId: userInfo.empresa_id,
+      action: 'LOGOUT',
+      details: `Usuário '${userInfo.nome}' realizou logout.`,
+      ipAddress: req.ip
+    });
+
     req.session.destroy(err => {
       if (err) {
-        return res.redirect('/'); // Ou para uma página de erro
+        return res.redirect('/');
       }
-      res.clearCookie('connect.sid'); // Limpa o cookie da sessão
+      res.clearCookie('connect.sid');
       res.redirect('/login');
     });
   } else {
@@ -236,7 +243,7 @@ router.get('/ia', verificaAutenticacao, function(req, res, next) {
 });
 
 // Rota POST para salvar treinamento — apenas admin
-router.post('/ia/treinamento', verificaAutenticacao, function(req, res) {
+router.post('/ia/treinamento', verificaAutenticacao, async function(req, res) {
   if (!req.session.usuario || !['admin', 'super_admin'].includes(req.session.usuario.tipo)) {
     return res.status(403).json({ success: false, error: 'Acesso negado' });
   }
@@ -244,6 +251,13 @@ router.post('/ia/treinamento', verificaAutenticacao, function(req, res) {
   const { systemPrompt } = req.body;
   try {
     fs.writeFileSync(treinamentoPath, systemPrompt, 'utf8');
+    await logActivity({
+      userId: req.session.usuario.id,
+      empresaId: req.session.usuario.empresa_id,
+      action: 'IA_TRAINING_UPDATED',
+      details: `Usuário '${req.session.usuario.nome}' atualizou o prompt de treinamento da IA.`,
+      ipAddress: req.ip
+    });
     res.json({ success: true });
   } catch (err) {
     res.json({ success: false, error: err.message });
@@ -303,7 +317,7 @@ router.post('/cadastro-empresa', async (req, res) => {
 
     // 3. Criar o usuário administrador, vinculando à empresa
     const senhaHash = await bcrypt.hash(senha, 10);
-    await Usuario.create({
+    const novoAdmin = await Usuario.create({
       nome: nome_usuario,
       email,
       senha: senhaHash,
@@ -315,8 +329,14 @@ router.post('/cadastro-empresa', async (req, res) => {
     // 4. Se tudo deu certo, comitar a transação
     await t.commit();
 
-    // Redirecionar para a página de login com mensagem de sucesso
-    // Alterado para mensagem de aguardando aprovação
+    await logActivity({
+      userId: novoAdmin.id,
+      empresaId: novaEmpresa.id,
+      action: 'COMPANY_REGISTERED',
+      details: `Empresa '${novaEmpresa.nome_fantasia}' cadastrada pelo usuário '${nome_usuario}' (${email}).`,
+      ipAddress: req.ip
+    });
+
     res.render('login', { title: 'Login - Sistema Service-management', success: 'Cadastro realizado! Sua empresa está em análise e você será notificado quando o acesso for liberado.' });
   } catch (error) {
     await t.rollback();

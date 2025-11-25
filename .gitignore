@@ -33,7 +33,10 @@ coverage/
 .wwebjs_auth/
 .wwebjs_cache/
 .eslintcache
+# WhatsApp/Web session blobs
 .sessions/
+sessions/
+routes/sessions/
 
 # IDEs / editors
 .vscode/
