@@ -693,6 +693,20 @@ class WhatsappManager {
         });
     }
   }
+
+  notifyChatReturned(contact, empresaId) {
+    if (!this.wss) {
+      return;
+    }
+    this.wss.clients.forEach(wsClient => {
+      if (wsClient.empresa_id === empresaId) {
+        wsClient.send(JSON.stringify({
+          type: 'chat-returned',
+          contact
+        }));
+      }
+    });
+  }
 }
 
 module.exports = new WhatsappManager();

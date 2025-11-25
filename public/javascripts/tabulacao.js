@@ -114,7 +114,7 @@ function mostrarTabulacao(status) {
 
 async function carregarTabulacoes() {
   try {
-    const res = await fetch('/whatsapp/tabulacoes');
+    const res = await fetch('/api/tabulacoes');
     const data = await res.json();
     tabulacoesCache = data.success ? (data.tabulacoes || {}) : {};
     mostrarTabulacao(getInitialStatus());
@@ -268,7 +268,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // Ação do botão "Retornar ao atendimento"
 async function returnToAtendimento(chatId) {
   try {
-    const res = await fetch('/whatsapp/tabular/retornar', {
+    const res = await fetch('/api/tabulacoes/retornar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chatId })

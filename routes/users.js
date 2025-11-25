@@ -4,6 +4,7 @@ const whatsappManager = require('./whatsappManager'); // CORREÇÃO: Usar o gere
 const verificaAutenticacao = require('./verificaAutenticacao');
 const Usuario = require('./Usuario');
 const Tabulacao = require('./Tabulacao'); // ADICIONE ESTA LINHA
+const { getTabulacoesGrouped } = require('./tabulacaoHelper');
 
 // === ADICIONAR ===
 const ChatbotDevice = require('./chatbotDevice'); // remove devices vinculados ao usuário
@@ -263,71 +264,31 @@ router.get('/grafico/:id', verificaAutenticacao, async (req, res) => {
 /* NOVO: endpoint para fornecer dados do gráfico (por usuário ou equipe) */
 router.get('/grafico-data', verificaAutenticacao, async (req, res) => {
   try {
-    // Permitir ?scope=team para agregação da equipe (apenas admin)
     const scope = req.query.scope || null;
     const userIdParam = req.query.userId ? parseInt(req.query.userId, 10) : null;
 
-    // Se pediram dados da equipe, validar permissão
+    if (Number.isNaN(userIdParam)) {
+      return res.status(400).json({ success: false, message: 'ID do usuário inválido' });
+    }
+
     if (scope === 'team') {
       if (!req.session.usuario || req.session.usuario.tipo !== 'admin') {
         return res.status(403).json({ success: false, message: 'Acesso negado' });
       }
     }
 
-    // Determina o filtro: team (nenhum filtro) ou userId (query / session impersonate / session usuario)
-    let filter = {};
-    if (scope !== 'team') {
-      // prioridade: userIdParam > session.impersonateUserId > session.usuario.id
-      const targetId = userIdParam || (req.session.impersonateUserId ? req.session.impersonateUserId : (req.session.usuario ? req.session.usuario.id : null));
-      if (!targetId) {
-        return res.status(400).json({ success: false, message: 'ID do usuário não identificado' });
-      }
-      filter.user_id = targetId;
-    }
-
-    // Busca tabulações com o filtro (ou todas quando scope=team)
-    const rows = await Tabulacao.findAll({ where: filter, raw: true });
-
-    // Monta objeto com arrays por chave esperada pelo frontend
-    const keys = [
-      'aniversariantes',
-      'sem-possibilidade',
-      'conversa-inativa',
-      'mudancas-cadastrais',
-      'negocio-fechado',
-      'sem-interesse'
-    ];
-    const tab = {};
-    keys.forEach(k => tab[k] = []);
-    rows.forEach(r => {
-      const key = r.tabulacao;
-      if (keys.includes(key)) {
-        // inclui apenas campos úteis para exibição (chatId, timestamp, dataAniversariante, detalhes, observacoes)
-        tab[key].push({
-          chatId: r.chatId,
-          timestamp: r.timestamp,
-          dataAniversariante: r.data_aniversariante || r.dataAniversariante || null,
-          detalhes: r.detalhes,
-          observacoes: r.observacoes,
-          user_id: r.user_id
-        });
-      } else {
-        // caso exista um tabulacao livre/novo, coloque em conversa-inativa como fallback
-        tab['conversa-inativa'].push({
-          chatId: r.chatId,
-          timestamp: r.timestamp,
-          dataAniversariante: r.data_aniversariante || null,
-          detalhes: r.detalhes,
-          observacoes: r.observacoes,
-          user_id: r.user_id
-        });
-      }
+    const { tab } = await getTabulacoesGrouped({
+      scope,
+      userIdParam,
+      session: req.session
     });
 
     res.json({ success: true, tabulacoes: tab });
   } catch (e) {
     console.error('Erro /users/grafico-data:', e);
-    res.status(500).json({ success: false, message: 'Erro ao buscar dados do gráfico' });
+    const status = e.status || 500;
+    const message = e.status ? e.message : 'Erro ao buscar dados do gráfico';
+    res.status(status).json({ success: false, message });
   }
 });
 

@@ -73,7 +73,7 @@
   async function fetchTabulacoesCounts() {
     try {
       // Determina a URL de dados conforme contexto (admin/team/user)
-      let url = '/whatsapp/tabulacoes'; // fallback (compatibilidade)
+      let url = '/api/tabulacoes'; // fallback (compatibilidade)
       try {
         const uTipo = window.__usuarioTipo || null;
         const uId = window.__usuarioId || null;
@@ -91,7 +91,7 @@
           } else if (uId) {
             url = `/users/grafico-data?userId=${uId}`;
           } else {
-            url = '/whatsapp/tabulacoes';
+            url = '/api/tabulacoes';
           }
         } else {
           // caminho pode ser /users/grafico/:id ou página padrão do usuário
@@ -111,7 +111,7 @@
         }
       } catch (e) {
         console.warn('Erro ao determinar URL de dados do gráfico, usando fallback:', e);
-        url = '/whatsapp/tabulacoes';
+        url = '/api/tabulacoes';
       }
 
       const res = await fetch(url, { cache: 'no-store' });

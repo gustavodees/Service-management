@@ -2766,7 +2766,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const originalText = btnTabular.textContent;
         btnTabular.textContent = 'TABULANDO...';
 
-        const res = await fetch('/whatsapp/tabular', {
+        const res = await fetch('/api/tabular', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -2805,7 +2805,7 @@ document.addEventListener('DOMContentLoaded', function () {
           return;
         }
         btnRetornar.disabled = true;
-        const res = await fetch('/whatsapp/tabular/retornar', {
+        const res = await fetch('/api/tabulacoes/retornar', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ chatId: selectedChatId })

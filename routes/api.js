@@ -4,9 +4,10 @@ const sequelize = require('./banco');
 const { QueryTypes } = require('sequelize');
 const verificaAutenticacao = require('./verificaAutenticacao');
 const Tabulacao = require('./Tabulacao'); // Adicionado
-const Usuario = require('./Usuario'); // Adicionado
 const whatsappManager = require('./whatsappManager'); // Adicionado
 const WhatsappMedia = require('./WhatsappMedia'); // Adicionado
+const Conversation = require('./Conversation');
+const { getTabulacoesGrouped } = require('./tabulacaoHelper');
 
 /**
  * Rota: GET /api/contacts
@@ -70,28 +71,37 @@ router.get('/contacts', verificaAutenticacao, async (req, res) => {
 
 /**
  * Rota: GET /api/tabulacoes
- * Busca todas as conversas tabuladas para a empresa do usuário logado.
+ * Busca as tabulações agrupadas por status para o usuário logado ou equipe.
  */
 router.get('/tabulacoes', verificaAutenticacao, async (req, res) => {
   try {
-    const { empresa_id } = req.session.usuario;
-    if (!empresa_id) {
-      return res.status(401).json({ error: 'Empresa não identificada.' });
+    const scope = req.query.scope || null;
+    const userIdParam = req.query.userId ? parseInt(req.query.userId, 10) : null;
+
+    if (Number.isNaN(userIdParam)) {
+      return res.status(400).json({ success: false, error: 'ID do usuário inválido.' });
     }
 
-    const tabulacoes = await Tabulacao.findAll({
-      where: { empresa_id },
-      include: [{
-        model: Usuario,
-        attributes: ['nome'] // Inclui o nome do usuário que tabulou
-      }],
-      order: [['timestamp', 'DESC']]
+    if (scope === 'team') {
+      if (!req.session.usuario || req.session.usuario.tipo !== 'admin') {
+        return res.status(403).json({ success: false, error: 'Acesso negado.' });
+      }
+    }
+
+    const { tab } = await getTabulacoesGrouped({
+      scope,
+      userIdParam,
+      session: req.session
     });
 
-    res.json({ success: true, tabulacoes });
+    res.json({ success: true, tabulacoes: tab });
   } catch (error) {
     console.error('Erro ao buscar tabulações:', error);
-    res.status(500).json({ success: false, error: 'Erro ao buscar tabulações.' });
+    const status = error.status || 500;
+    res.status(status).json({
+      success: false,
+      error: status === 500 ? 'Erro ao buscar tabulações.' : error.message
+    });
   }
 });
 
@@ -125,6 +135,48 @@ router.post('/tabular', verificaAutenticacao, async (req, res) => {
   } catch (error) {
     console.error('Erro ao tabular conversa:', error);
     res.status(500).json({ success: false, error: 'Erro interno do servidor.' });
+  }
+});
+
+/**
+ * Rota: POST /api/tabulacoes/retornar
+ * Remove a tabulação de um chat e notifica os clientes em tempo real.
+ */
+router.post('/tabulacoes/retornar', verificaAutenticacao, async (req, res) => {
+  try {
+    const { chatId } = req.body;
+    const { empresa_id } = req.session.usuario;
+
+    if (!chatId) {
+      return res.status(400).json({ success: false, error: 'chatId é obrigatório.' });
+    }
+    if (!empresa_id) {
+      return res.status(401).json({ success: false, error: 'Empresa não identificada.' });
+    }
+
+    await Tabulacao.destroy({ where: { chatId, empresa_id } });
+
+    const contact = await Conversation.findOne({ where: { id: chatId, empresa_id }, raw: true });
+    const contactPayload = contact ? {
+      id: contact.id,
+      name: contact.name,
+      profilePicUrl: contact.profile_pic_url,
+      lastMessage: contact.last_message,
+      deviceId: contact.device_id,
+      isGroup: contact.is_group,
+      source: contact.source || 'whatsapp'
+    } : {
+      id: chatId,
+      name: (chatId || '').replace('@c.us', ''),
+      source: 'whatsapp'
+    };
+
+    whatsappManager.notifyChatReturned(contactPayload, empresa_id);
+
+    res.json({ success: true, message: 'Conversa retornada ao atendimento.' });
+  } catch (error) {
+    console.error('Erro ao retornar tabulação:', error);
+    res.status(500).json({ success: false, error: 'Erro ao retornar tabulação.' });
   }
 });
 
