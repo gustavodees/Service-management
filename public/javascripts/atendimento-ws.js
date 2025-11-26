@@ -54,6 +54,303 @@ if (!allowedTabs.includes(currentTab)) {
 let currentDeviceId = localStorage.getItem('currentDeviceId') || null;
 let activeConversationMenu = null;
 
+// Helper global para normalizar IDs de mensagens vindas do backend/whatsapp-web.js
+function resolveMessageId(message) {
+  if (!message) return null;
+  const candidate = message.id || message.messageId || message.key || message;
+  if (!candidate) return null;
+  if (typeof candidate === 'string') return candidate;
+  if (candidate._serialized) return candidate._serialized;
+  if (candidate.id) return candidate.id;
+  if (candidate._id) return candidate._id;
+  return null;
+}
+
+// Cache simples para evitar múltiplas requisições da mesma mídia
+const mediaPayloadCache = new Map();
+const mediaPayloadInFlight = new Map();
+
+async function requestMediaPayload(messageId) {
+  if (!messageId) {
+    throw new Error('messageId ausente');
+  }
+  if (mediaPayloadCache.has(messageId)) {
+    return mediaPayloadCache.get(messageId);
+  }
+  if (mediaPayloadInFlight.has(messageId)) {
+    return mediaPayloadInFlight.get(messageId);
+  }
+
+  const fetchPromise = (async () => {
+    const response = await fetch(`/api/media?messageId=${encodeURIComponent(messageId)}`);
+    if (!response.ok) {
+      throw new Error(`Falha HTTP ${response.status}`);
+    }
+    const result = await response.json();
+    if (!result || !result.success || !result.data) {
+      throw new Error(result?.error || 'Mídia não encontrada.');
+    }
+    mediaPayloadCache.set(messageId, result);
+    return result;
+  })()
+    .catch((err) => {
+      mediaPayloadCache.delete(messageId);
+      throw err;
+    })
+    .finally(() => {
+      mediaPayloadInFlight.delete(messageId);
+    });
+
+  mediaPayloadInFlight.set(messageId, fetchPromise);
+  return fetchPromise;
+}
+
+function buildDataUrl(mimetype, base64Data) {
+  const safeType = mimetype || 'application/octet-stream';
+  return `data:${safeType};base64,${base64Data}`;
+}
+
+function escapeHtml(value) {
+  if (value === undefined || value === null) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+const EXTENSION_MIME_MAP = {
+  mp4: 'video/mp4',
+  m4v: 'video/x-m4v',
+  mov: 'video/quicktime',
+  webm: 'video/webm',
+  mkv: 'video/x-matroska',
+  avi: 'video/x-msvideo',
+  mpg: 'video/mpeg',
+  mpeg: 'video/mpeg',
+  '3gp': 'video/3gpp',
+  '3gpp': 'video/3gpp',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  gif: 'image/gif',
+  bmp: 'image/bmp',
+  svg: 'image/svg+xml',
+  pdf: 'application/pdf',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  csv: 'text/csv',
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+  ogg: 'audio/ogg',
+  oga: 'audio/ogg',
+  opus: 'audio/ogg',
+  m4a: 'audio/mp4',
+  aac: 'audio/aac'
+};
+
+function inferMimeTypeFromFilename(filename) {
+  if (!filename || typeof filename !== 'string') {
+    return null;
+  }
+  const parts = filename.toLowerCase().split('.');
+  if (parts.length < 2) {
+    return null;
+  }
+  const extension = parts.pop();
+  return EXTENSION_MIME_MAP[extension] || null;
+}
+
+function inferMessageMimeType(msg) {
+  if (!msg) return null;
+  if (msg.mimetype) return msg.mimetype;
+  const filenameMime = inferMimeTypeFromFilename(msg.filename);
+  if (filenameMime) return filenameMime;
+  switch (msg.type) {
+    case 'image':
+      return 'image/jpeg';
+    case 'video':
+      return 'video/mp4';
+    case 'ptt':
+    case 'audio':
+      return 'audio/ogg';
+    case 'document':
+      return 'application/octet-stream';
+    default:
+      return null;
+  }
+}
+
+function buildMediaPlaceholderLabel(msg, resolvedMime) {
+  if (!msg) return 'Clique para ver a mídia';
+  if (msg.filename) return msg.filename;
+  const isVideo = (resolvedMime && resolvedMime.startsWith('video/')) || msg.type === 'video';
+  const isImage = (resolvedMime && resolvedMime.startsWith('image/')) || msg.type === 'image';
+  const isAudio = (resolvedMime && resolvedMime.startsWith('audio/')) || msg.type === 'audio' || msg.type === 'ptt';
+  if (isVideo) return 'Vídeo recebido';
+  if (isImage) return 'Imagem recebida';
+  if (isAudio) return 'Áudio recebido';
+  return 'Arquivo recebido';
+}
+
+function buildAudioPlayerMarkup(sourceUrl, mimetype, labelText) {
+  const safeLabel = escapeHtml(labelText || 'Áudio (.ogg)');
+  const safeMime = mimetype || 'audio/ogg';
+  const downloadLabel = safeLabel || 'Áudio';
+  return `
+    <div class="audio-player-wrapper" style="max-width: 320px;">
+      <div class="audio-label" style="display:flex;align-items:center;gap:6px;font-weight:600;margin-bottom:6px;">
+        <i class="fa-solid fa-circle-play" aria-hidden="true"></i>
+        <span>${safeLabel}</span>
+      </div>
+      <audio controls preload="metadata" style="width: 100%;">
+        <source src="${sourceUrl}" type="${safeMime}">
+        <source src="${sourceUrl}" type="audio/ogg">
+        <source src="${sourceUrl}" type="audio/mpeg">
+        <source src="${sourceUrl}" type="audio/wav">
+        Seu navegador não suporta áudio. <a href="${sourceUrl}" download="${downloadLabel}">Baixar áudio</a>
+      </audio>
+    </div>
+  `;
+}
+
+function renderInlineMediaFromPayload(target, payload) {
+  if (!target || !payload || !payload.data) return;
+  const mimetype = payload.mimetype || target.dataset.mimetype || 'application/octet-stream';
+  const filename = payload.filename || target.dataset.filename || 'arquivo';
+  const safeFilenameText = escapeHtml(filename);
+  const safeFilenameAttr = escapeHtml(filename);
+  const dataUrl = buildDataUrl(mimetype, payload.data);
+
+  target.classList.remove('media-placeholder');
+  target.classList.add('media-loaded');
+  target.dataset.mimetype = mimetype;
+  target.dataset.filename = safeFilenameAttr;
+
+  if (mimetype.startsWith('image/')) {
+    target.innerHTML = `<img src="${dataUrl}" alt="${safeFilenameText}" data-mimetype="${mimetype}" data-filename="${safeFilenameAttr}" style="max-width: 300px; max-height: 200px; border-radius: 8px; cursor: pointer;">`;
+  } else if (mimetype.startsWith('video/')) {
+    target.innerHTML = `<video controls style="max-width:320px;" data-mimetype="${mimetype}" data-filename="${safeFilenameAttr}"><source src="${dataUrl}" type="${mimetype}"></video>`;
+  } else {
+    target.innerHTML = `<div class="file-message"><i class="fa-solid fa-file"></i> <a href="${dataUrl}" download="${safeFilenameAttr}" target="_blank">${safeFilenameText}</a></div>`;
+  }
+}
+
+function renderAudioPlayerFromPayload(wrapper, payload) {
+  if (!wrapper || !payload || !payload.data) return;
+  const mimetype = payload.mimetype || 'audio/ogg';
+  const filename = payload.filename || 'Áudio';
+  const dataUrl = buildDataUrl(mimetype, payload.data);
+
+  wrapper.classList.add('audio-ready');
+  wrapper.innerHTML = buildAudioPlayerMarkup(dataUrl, mimetype, filename);
+}
+
+function showMediaErrorState(element, retryFn) {
+  if (!element) return;
+  element.innerHTML = `
+    <div class="media-error">
+      <i class="fa-solid fa-triangle-exclamation"></i>
+      <span>Falha ao carregar mídia</span>
+      <button type="button" class="media-retry-btn">Tentar novamente</button>
+    </div>
+  `;
+  const retryBtn = element.querySelector('.media-retry-btn');
+  if (retryBtn) {
+    retryBtn.onclick = (event) => {
+      event.stopPropagation();
+      if (typeof retryFn === 'function') {
+        retryFn();
+      }
+    };
+  }
+}
+
+async function loadAudioByMessageId(wrapper, messageId, isManual = false) {
+  if (!wrapper || !messageId) return;
+  const loadingBlock = wrapper.querySelector('[data-role="audio-loading"]');
+  wrapper.dataset.autoloadState = 'loading';
+  if (loadingBlock) {
+    loadingBlock.innerHTML = `
+      <div style="padding: 10px; background: #f0f0f0; border-radius: 8px; max-width: 300px;">
+        🔄 Carregando áudio...
+        <br><small>Aguarde...</small>
+      </div>
+    `;
+  }
+
+  try {
+    const payload = await requestMediaPayload(messageId);
+    renderAudioPlayerFromPayload(wrapper, payload);
+    wrapper.dataset.autoloadState = 'done';
+  } catch (error) {
+    console.error('Erro ao carregar áudio:', error);
+    wrapper.dataset.autoloadState = 'error';
+    if (loadingBlock) {
+      loadingBlock.innerHTML = `
+        <div style="padding: 10px; background: #ffebee; border-radius: 8px; max-width: 300px; cursor: pointer;">
+          ❌ Erro ao carregar áudio
+          <br><small>Clique para tentar novamente</small>
+        </div>
+      `;
+      loadingBlock.onclick = (event) => {
+        event.stopPropagation();
+        loadAudioByMessageId(wrapper, messageId, true);
+      };
+    }
+    if (!isManual) {
+      // permite que o usuário tente manualmente depois
+      wrapper.classList.add('audio-error');
+    }
+  }
+}
+
+function autoLoadMediaContent(messageContainer, msg) {
+  if (!messageContainer || !msg) return;
+  const serializedId = resolveMessageId(msg);
+  if (!serializedId) return;
+
+  const hasInlineMedia = Boolean(msg.hasMedia) && (!msg.data || msg.data.length === 0);
+  if (hasInlineMedia) {
+    const placeholder = messageContainer.querySelector('.media-placeholder[data-message-id]');
+    if (placeholder && placeholder.dataset.autoloadState !== 'done') {
+      if (placeholder.dataset.autoloadState === 'loading') {
+        return; // já existe fetch em andamento
+      }
+      placeholder.dataset.autoloadState = 'loading';
+      placeholder.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Carregando mídia...';
+      requestMediaPayload(serializedId)
+        .then((payload) => {
+          renderInlineMediaFromPayload(placeholder, payload);
+          placeholder.dataset.autoloadState = 'done';
+        })
+        .catch((error) => {
+          console.error('Auto-load de mídia falhou:', error);
+          placeholder.dataset.autoloadState = 'error';
+          showMediaErrorState(placeholder, () => {
+            placeholder.dataset.autoloadState = '';
+            autoLoadMediaContent(messageContainer, msg);
+          });
+        });
+    }
+  }
+
+  const isAudioMessage = (!msg.data || msg.data.length === 0) && !msg.audioUrl && (
+    (msg.mimetype && msg.mimetype.startsWith('audio/')) ||
+    msg.type === 'ptt' ||
+    msg.type === 'audio'
+  );
+  if (isAudioMessage) {
+    const audioWrapper = messageContainer.querySelector('.audio-message[data-message-id]');
+    if (audioWrapper && audioWrapper.dataset.autoloadState !== 'done') {
+      loadAudioByMessageId(audioWrapper, serializedId);
+    }
+  }
+}
+
 document.addEventListener('click', (event) => {
   if (!event.target.closest('.conversation-menu-wrapper')) {
     closeConversationMenus();
@@ -1181,8 +1478,22 @@ function sendAudioMessage(audioBlob) {
       return;
     }
 
-    const mimeType = audioBlob.type.includes('mp3') ? 'audio/mp3' : 'audio/mpeg';
-    const filename = `audio_${Date.now()}.mp3`;
+    const originalType = audioBlob.type || '';
+    const normalizedMime = (originalType.split(';')[0] || '').toLowerCase();
+    const mimeType = normalizedMime || 'audio/ogg';
+    const mimeExtensionMap = {
+      'audio/ogg': 'ogg',
+      'audio/oga': 'ogg',
+      'audio/opus': 'ogg',
+      'audio/webm': 'webm',
+      'audio/mp3': 'mp3',
+      'audio/mpeg': 'mp3',
+      'audio/wav': 'wav',
+      'audio/mp4': 'm4a',
+      'audio/aac': 'aac'
+    };
+    const extension = mimeExtensionMap[mimeType] || (mimeType.includes('/') ? mimeType.split('/')[1] : 'ogg');
+    const filename = `audio_${Date.now()}.${extension}`;
 
     console.log('Enviando áudio:', {
       filename,
@@ -1248,32 +1559,97 @@ function sendAudioMessage(audioBlob) {
         }
       })();
     } else {
-      // Envia via WhatsApp direto
-      if (wsWhatsapp && wsWhatsapp.readyState === WebSocket.OPEN) {
-        // Obter deviceId correto
-        const deviceId = chatObj?.deviceId || currentDeviceId || localStorage.getItem('currentDeviceId');
-
-        wsWhatsapp.send(JSON.stringify({
-          type: 'send-audio', // Mudança: usar 'send-audio' em vez de 'send-media'
-          chatId: selectedChatId,
-          audioData: base64,
-          deviceId: deviceId // Incluir deviceId
-        }));
-
-        console.log('Áudio enviado via WebSocket WhatsApp com deviceId:', deviceId);
-
-        setTimeout(() => {
-          if (chatMessages.contains(loadingDiv)) {
-            chatMessages.removeChild(loadingDiv);
-          }
-        }, 8000);
-      } else {
+      // Envia via WhatsApp direto usando o endpoint HTTP (com fallback via WebSocket comum)
+      const deviceId = chatObj?.deviceId || currentDeviceId || localStorage.getItem('currentDeviceId');
+      if (!deviceId) {
         if (chatMessages.contains(loadingDiv)) {
           chatMessages.removeChild(loadingDiv);
         }
-        console.error('WebSocket WhatsApp não está conectado');
-        showNotification('Erro', 'Não foi possível enviar o áudio. Verifique sua conexão.');
+        showNotification('Erro', 'Não foi possível identificar o dispositivo desta conversa.');
+        return;
       }
+
+      const formData = new FormData();
+      formData.append('deviceId', deviceId);
+      formData.append('chatId', selectedChatId);
+      formData.append('file', audioBlob, filename);
+
+      (async () => {
+        try {
+          const response = await fetch('/api/whatsapp/send-media', {
+            method: 'POST',
+            body: formData
+          });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok || !result?.success) {
+            throw new Error(result?.message || result?.error || `Falha ao enviar áudio (HTTP ${response.status}).`);
+          }
+
+          if (chatMessages.contains(loadingDiv)) {
+            chatMessages.removeChild(loadingDiv);
+          }
+
+          const messageId = result.sentMessageId || `local_audio_${Date.now()}`;
+          const audioMessage = {
+            id: messageId,
+            body: '[Áudio]',
+            fromMe: true,
+            type: 'ptt',
+            timestamp: Math.floor(Date.now() / 1000),
+            mimetype: mimeType,
+            filename: filename,
+            data: base64
+          };
+
+          appendMessage(audioMessage);
+          updateLocalChatHistory(selectedChatId, audioMessage);
+
+          console.log('Áudio enviado com sucesso via HTTP WhatsApp', { deviceId, chatId: selectedChatId });
+        } catch (error) {
+          console.error('Erro no envio HTTP de áudio:', error);
+
+          if (wsWhatsapp && wsWhatsapp.readyState === WebSocket.OPEN) {
+            try {
+              wsWhatsapp.send(JSON.stringify({
+                type: 'send-media',
+                chatId: selectedChatId,
+                filename,
+                mimetype: mimeType,
+                data: base64,
+                deviceId
+              }));
+
+              console.log('Áudio enviado via fallback WebSocket send-media');
+
+              if (chatMessages.contains(loadingDiv)) {
+                chatMessages.removeChild(loadingDiv);
+              }
+
+              const fallbackMessage = {
+                id: `local_audio_${Date.now()}`,
+                body: '[Áudio]',
+                fromMe: true,
+                type: 'ptt',
+                timestamp: Math.floor(Date.now() / 1000),
+                mimetype: mimeType,
+                filename: filename,
+                data: base64
+              };
+
+              appendMessage(fallbackMessage);
+              updateLocalChatHistory(selectedChatId, fallbackMessage);
+              return;
+            } catch (wsError) {
+              console.error('Erro no fallback via WebSocket para envio de áudio:', wsError);
+            }
+          }
+
+          if (chatMessages.contains(loadingDiv)) {
+            chatMessages.removeChild(loadingDiv);
+          }
+          showNotification('Erro', 'Não foi possível enviar o áudio: ' + (error.message || 'Erro desconhecido'));
+        }
+      })();
     }
   };
 
@@ -1350,6 +1726,7 @@ function renderMessages(messages) {
       div.innerHTML = `<span>${msg.body || ''}</span>`;
     }
 
+    autoLoadMediaContent(div, msg);
     chatMessages.appendChild(div);
   });
 
@@ -1376,173 +1753,97 @@ function appendMessage(msg) {
     div.innerHTML = `<span>${msg.body || ''}</span>`;
   }
 
+  autoLoadMediaContent(div, msg);
   chatMessages.appendChild(div);
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
 // Função para renderizar conteúdo de mídia
 function renderMediaContent(msg) {
-  // OTIMIZAÇÃO: Se 'data' (base64) já estiver presente, renderiza diretamente.
-  if (msg.data && msg.mimetype) {
-    if (msg.mimetype.startsWith('image/')) {
-    const base64Data = `data:${msg.mimetype};base64,${msg.data}`;
-    return `<img src="${base64Data}" 
+  const resolvedMime = inferMessageMimeType(msg);
+
+  // OTIMIZAÇÃO: Se 'data' (base64) já estiver presente, renderiza diretamente para imagens/vídeos.
+  if (msg.data && resolvedMime) {
+    if (resolvedMime.startsWith('image/')) {
+      const base64Data = `data:${resolvedMime};base64,${msg.data}`;
+      return `<img src="${base64Data}" 
                  alt="Imagem" 
                  style="max-width: 300px; max-height: 200px; border-radius: 8px; cursor: pointer;" 
-                 onclick="openImageModal('${base64Data}', '${msg.mimetype}')">`;
-    } else if (msg.mimetype.startsWith('video/')) {
-    const base64Data = `data:${msg.mimetype};base64,${msg.data}`;
-    return `<video controls style="max-width:320px;"><source src="data:${msg.mimetype};base64,${msg.data}" type="${msg.mimetype}"></video>`;
+                 onclick="openImageModal('${base64Data}', '${resolvedMime}')">`;
     }
-    // Outros tipos de mídia com 'data' podem ser adicionados aqui.
+    if (resolvedMime.startsWith('video/')) {
+      return `<video controls style="max-width:320px;"><source src="data:${resolvedMime};base64,${msg.data}" type="${resolvedMime}"></video>`;
+    }
   }
 
-  // OTIMIZAÇÃO: Se 'data' não estiver presente, cria um placeholder clicável para buscar a mídia sob demanda.
-  if (msg.hasMedia && msg.mimetype) {
-    const iconClass = msg.mimetype.startsWith('image/') ? 'fa-image' : (msg.mimetype.startsWith('video/') ? 'fa-video' : 'fa-file');
-    return `<div class="media-placeholder" onclick="fetchMediaAndOpen(this, '${msg.id}')">
+  // OTIMIZAÇÃO: Cria placeholder clicável para buscar a mídia sob demanda, mesmo que o mimetype não venha do backend.
+  if (msg.hasMedia) {
+    const isImage = (resolvedMime && resolvedMime.startsWith('image/')) || msg.type === 'image';
+    const isVideo = (resolvedMime && resolvedMime.startsWith('video/')) || msg.type === 'video';
+    const iconClass = isImage ? 'fa-image' : (isVideo ? 'fa-video' : 'fa-file');
+    const serializedId = resolveMessageId(msg) || '';
+    const safeIdAttr = serializedId.replace(/"/g, '&quot;');
+    const filenameLabel = buildMediaPlaceholderLabel(msg, resolvedMime);
+    const safeFilename = escapeHtml(filenameLabel);
+    return `<div class="media-placeholder" data-message-id="${safeIdAttr}" data-mimetype="${resolvedMime || ''}" data-filename="${safeFilename}" data-autoload-state="pending">
               <i class="fa-solid ${iconClass}"></i>
-              <span>${msg.filename || 'Clique para ver a mídia'}</span>
-              <small>Carregar</small>
+              <span>${safeFilename}</span>
+              <small>Carregando automaticamente...</small>
             </div>`;
-  } else if ((msg.mimetype && msg.mimetype.startsWith('audio/')) || msg.type === 'ptt' || msg.type === 'audio' || msg.audioUrl || (msg.body === '[Áudio]')) {
+  }
+
+  if ((resolvedMime && resolvedMime.startsWith('audio/')) || msg.type === 'ptt' || msg.type === 'audio' || msg.audioUrl || (msg.body === '[Áudio]')) {
+    const audioMime = resolvedMime || msg.mimetype || 'audio/ogg';
     // Priorizar URL local, depois dados base64
     if (msg.audioUrl) {
-      return `<div class="audio-message">
-        <audio controls style="max-width: 300px;">
-          <source src="${msg.audioUrl}" type="audio/ogg">
-          <source src="${msg.audioUrl}" type="audio/mpeg">
-          <source src="${msg.audioUrl}" type="audio/wav">
-          ${msg.data ? `<source src="data:${msg.mimetype || 'audio/ogg'};base64,${msg.data}" type="${msg.mimetype || 'audio/ogg'}">` : ''}
-
-          Seu navegador não suporta áudio.
-        </audio>
-        <br><small>🎵 ${msg.filename || 'Áudio'}</small>
-      </div>`;
-    } else if (msg.data) {
-      const base64Data = `data:${msg.mimetype || 'audio/ogg'};base64,${msg.data}`;
-      return `<div class="audio-message">
-        <audio controls style="max-width: 300px;">
-          <source src="${base64Data}" type="${msg.mimetype || 'audio/ogg'}">
-          <source src="${base64Data}" type="audio/ogg">
-          <source src="${base64Data}" type="audio/mpeg">
-          <source src="${base64Data}" type="audio/wav">
-          Seu navegador não suporta áudio.
-        </audio>
-        <br><small>🎵 ${msg.filename || 'Áudio'}</small>
-      </div>`;
-    } else {
-      // Para mensagens de áudio sem dados, tentar buscar do servidor
-      return `<div class="audio-message" data-message-id="${msg.id || ''}" data-chat-id="${selectedChatId || ''}">
-        <div style="padding: 10px; background: #f0f0f0; border-radius: 8px; max-width: 300px; cursor: pointer;" onclick="tryLoadAudio(this)">
-          🎵 ${msg.body || 'Áudio'}
-          <br><small>${msg.filename || 'Clique para carregar áudio'}</small>
-        </div>
+      const label = msg.filename || 'Áudio (.ogg)';
+      return `<div class="audio-message audio-ready">
+        ${buildAudioPlayerMarkup(msg.audioUrl, audioMime, label)}
       </div>`;
     }
-  } else if (msg.mimetype === 'application/pdf' && msg.data) {
-    const base64Data = `data:${msg.mimetype};base64,${msg.data}`;
-    return `<div class="file-message"><i class="fa-solid fa-file-pdf"></i> <a href="${base64Data}" download="${msg.filename}" target="_blank">${msg.filename || 'Documento PDF'}</a></div>`;
-  } else if ((msg.mimetype === 'application/msword' || msg.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') && msg.data) {
-    const base64Data = `data:${msg.mimetype};base64,${msg.data}`;
-    return `<div class="file-message"><i class="fa-solid fa-file-word"></i> <a href="${base64Data}" download="${msg.filename}" target="_blank">${msg.filename || 'Documento Word'}</a></div>`;
-  } else {
-    return `<div class="file-message"><i class="fa-solid fa-file"></i> <span>Arquivo: ${msg.filename || 'Desconhecido'}</span></div>`;
-  }
-}
-
-// --- ADICIONADO: Função para buscar mídia sob demanda e abrir no modal ---
-async function fetchMediaAndOpen(element, messageId) {
-  // Mostra um estado de carregamento no placeholder
-  element.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Carregando...';
-  element.onclick = null; // Desativa o clique para evitar múltiplas requisições
-
-  try {
-    const response = await fetch(`/api/media?messageId=${encodeURIComponent(messageId)}`);
-    const result = await response.json();
-
-    if (result.success && result.data) {
-      const dataUrl = `data:${result.mimetype};base64,${result.data}`;
-      if (result.mimetype.startsWith('image/')) {
-        openImageModal(dataUrl, result.mimetype, result.filename);
-      } else if (result.mimetype.startsWith('video/')) {
-        // Para vídeos, podemos substituir o placeholder por um player
-        element.outerHTML = `<video controls autoplay style="max-width:320px;"><source src="${dataUrl}" type="${result.mimetype}"></video>`;
-      } else {
-        // Para outros tipos de arquivo, força o download
-        const a = document.createElement('a');
-        a.href = dataUrl;
-        a.download = result.filename || 'arquivo';
-        a.click();
-      }
-      // Remove o placeholder se a ação principal (modal/download) foi executada
-      if (!result.mimetype.startsWith('video/')) {
-        element.remove();
-      }
-    } else {
-      throw new Error(result.error || 'Mídia não encontrada.');
+    if (msg.data) {
+      const base64Data = `data:${audioMime};base64,${msg.data}`;
+      return `<div class="audio-message audio-ready">
+        ${buildAudioPlayerMarkup(base64Data, audioMime, msg.filename || 'Áudio (.ogg)')}
+      </div>`;
     }
-  } catch (error) {
-    console.error('Erro ao buscar mídia sob demanda:', error);
-    element.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Falha ao carregar';
+    // Para mensagens de áudio sem dados, tentar buscar do servidor
+    const serializedId = (resolveMessageId(msg) || '').replace(/"/g, '&quot;');
+    const audioLabel = escapeHtml(msg.body || 'Áudio');
+    const audioFilename = escapeHtml(msg.filename || 'Clique para carregar áudio');
+    return `<div class="audio-message" data-message-id="${serializedId}" data-chat-id="${selectedChatId || ''}" data-autoload-state="pending">
+      <div data-role="audio-loading" style="padding: 10px; background: #f0f0f0; border-radius: 8px; max-width: 300px; cursor: pointer;" onclick="tryLoadAudio(this)">
+        🎵 ${audioLabel}
+        <br><small>${audioFilename}</small>
+      </div>
+    </div>`;
   }
+
+  if (resolvedMime === 'application/pdf' && msg.data) {
+    const base64Data = `data:${resolvedMime};base64,${msg.data}`;
+    return `<div class="file-message"><i class="fa-solid fa-file-pdf"></i> <a href="${base64Data}" download="${msg.filename || 'documento.pdf'}" target="_blank">${msg.filename || 'Documento PDF'}</a></div>`;
+  }
+
+  if ((resolvedMime === 'application/msword' || resolvedMime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') && msg.data) {
+    const base64Data = `data:${resolvedMime};base64,${msg.data}`;
+    return `<div class="file-message"><i class="fa-solid fa-file-word"></i> <a href="${base64Data}" download="${msg.filename || 'documento.doc'}" target="_blank">${msg.filename || 'Documento Word'}</a></div>`;
+  }
+
+  const fallbackLabel = escapeHtml(buildMediaPlaceholderLabel(msg, resolvedMime));
+  return `<div class="file-message"><i class="fa-solid fa-file"></i> <span>Arquivo: ${fallbackLabel}</span></div>`;
 }
 
 // Função para tentar carregar áudio quando clicado
 function tryLoadAudio(element) {
-  const messageId = element.closest('.audio-message').dataset.messageId;
-  const chatId = element.closest('.audio-message').dataset.chatId;
+  const wrapper = element.closest('.audio-message');
+  const messageId = wrapper?.dataset?.messageId;
 
-  if (!messageId || !chatId) {
-    console.error('ID da mensagem ou chat não encontrado');
+  if (!wrapper || !messageId) {
+    console.error('Wrapper ou ID da mensagem de áudio não encontrado');
     return;
   }
 
-  // Mostrar loading
-  element.innerHTML = `
-    <div style="padding: 10px; background: #f0f0f0; border-radius: 8px; max-width: 300px;">
-      🔄 Carregando áudio...
-      <br><small>Aguarde...</small>
-    </div>
-  `;
-
-  // Tentar buscar áudio do servidor
-  fetch(`/api/media?messageId=${encodeURIComponent(messageId)}`)
-    .then(res => res.json())
-    .then(result => {
-      if (result.success && result.data) {
-        const mimeType = result.mimetype || 'audio/ogg';
-        const dataUrl = `data:${mimeType};base64,${result.data}`;
-        // Substituir elemento com player de áudio
-        element.innerHTML = `
-
-        <audio controls style="max-width: 300px;">
-          <source src="${dataUrl}" type="${mimeType}">
-          <source src="${dataUrl}" type="audio/ogg">
-          <source src="${dataUrl}" type="audio/mpeg">
-          <source src="${dataUrl}" type="audio/wav">
-          Seu navegador não suporta áudio.
-        </audio>
-        <br><small>🎵 ${result.filename || 'Áudio'}</small>
-      `;
-      } else {
-        element.innerHTML = `
-        <div style="padding: 10px; background: #ffebee; border-radius: 8px; max-width: 300px;">
-          ❌ Erro ao carregar áudio
-          <br><small>Áudio não disponível</small>
-        </div>
-      `;
-      }
-    })
-    .catch(err => {
-      console.error('Erro ao carregar áudio:', err);
-      element.innerHTML = `
-      <div style="padding: 10px; background: #ffebee; border-radius: 8px; max-width: 300px;">
-        ❌ Erro ao carregar áudio
-        <br><small>Falha na conexão</small>
-      </div>
-    `;
-    });
+  loadAudioByMessageId(wrapper, messageId, true);
 }
 
 /**
@@ -2546,6 +2847,32 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
+  async function sendWhatsappMediaFile(file, deviceId, chatId) {
+    const formData = new FormData();
+    formData.append('deviceId', deviceId);
+    formData.append('chatId', chatId);
+    formData.append('file', file, file.name || 'arquivo');
+
+    const response = await fetch('/api/whatsapp/send-media', {
+      method: 'POST',
+      body: formData
+    });
+
+    let result = null;
+    try {
+      result = await response.json();
+    } catch (parseError) {
+      throw new Error('Erro ao enviar mídia (resposta inválida do servidor).');
+    }
+
+    if (!response.ok || !result?.success) {
+      const message = result?.message || result?.error || `Falha ao enviar mídia (HTTP ${response.status}).`;
+      throw new Error(message);
+    }
+
+    return result;
+  }
+
   // File send handler: validate file, create preview and send via HTTP or WebSocket
   async function handleFileSend(file) {
     if (!selectedChatId) {
@@ -2620,26 +2947,8 @@ document.addEventListener('DOMContentLoaded', function () {
           // backend notificará via WS — atualiza preview local
           updateLocalChatHistory(selectedChatId, messagePreview);
         } else {
-          // --- ALTERAÇÃO: enviar via HTTP para /whatsapp/send-media (par ao fluxo do chatbot) ---
           try {
-            const resp = await fetch('/whatsapp/send-media', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                chatId: selectedChatId,
-                filename: file.name,
-                mimetype: file.type,
-                data: base64,
-                deviceId: deviceId,
-                tempId
-              })
-            }).then(r => r.json());
-
-            if (!resp || !resp.success) {
-              throw new Error((resp && resp.error) || 'Falha ao enviar mídia via WhatsApp');
-            }
-
-            // atualizar preview/local history — backend/WS também poderá enviar evento definitivo
+            await sendWhatsappMediaFile(file, deviceId, selectedChatId);
             updateLocalChatHistory(selectedChatId, messagePreview);
           } catch (err) {
             // fallback para envio via WS (opcional): tenta via WebSocket se HTTP falhar
@@ -3165,62 +3474,6 @@ function normalizeTimestamp(ts) {
   if (n > 1e11) return Math.floor(n / 1000); // ms -> s
   if (n > 1e10) return Math.floor(n / 1000);
   return Math.floor(n); // já em segundos
-}
-
-// Buscar mídia do servidor (retorna { data, mimetype, filename })
-async function fetchMediaFromServer(messageId, chatId) {
-  try {
-    const url = `/whatsapp/media?messageId=${encodeURIComponent(messageId)}&chatId=${encodeURIComponent(chatId || '')}`;
-    const res = await fetch(url);
-    const json = await res.json();
-    if (json && json.success && json.data) {
-      return { data: json.data, mimetype: json.mimetype, filename: json.filename };
-    }
-    throw new Error(json.error || 'Mídia não encontrada no servidor');
-  } catch (err) {
-    console.error('fetchMediaFromServer erro:', err);
-    throw err;
-  }
-}
-
-// === INSERIR helper: busca mídia (imagem/video) e abre modal quando necessário ===
-async function fetchMediaAndOpen(message) {
-  try {
-    if (!message || !message.id) return;
-    const chatId = selectedChatId || (message.chatId || '');
-    const res = await fetch(`/whatsapp/media?messageId=${encodeURIComponent(message.id)}&chatId=${encodeURIComponent(chatId)}`);
-    const json = await res.json();
-    if (!json || !json.success) {
-      console.warn('Media não encontrada no servidor', json && json.error);
-      return;
-    }
-    const data = json.data;
-    const mimetype = json.mimetype || message.mimetype || 'application/octet-stream';
-    const filename = json.filename || message.filename || 'arquivo';
-    if (!data) {
-      console.warn('Media sem base64 no servidor');
-      return;
-    }
-    const dataUrl = `data:${mimetype};base64,${data}`;
-    // Se for imagem/video, abre modal; se for audio, cria player inline
-    if (mimetype.startsWith('image/') || mimetype === 'image/svg+xml') {
-      openImageModal(dataUrl, mimetype, filename);
-    } else if (mimetype.startsWith('video/')) {
-      openImageModal(dataUrl, mimetype, filename);
-    } else if (mimetype.startsWith('audio/')) {
-      // substitui placeholder por player (procure elemento com data-message-id)
-      const el = document.querySelector(`[data-message-id="${message.id}"]`);
-      if (el) {
-        el.innerHTML = `<audio controls style="max-width:300px;"><source src="${dataUrl}" type="${mimetype}">Seu navegador não suporta áudio.</audio>`;
-      }
-    } else {
-      // para documentos, abrir em nova aba como data URL (pode ser pesado)
-      const win = window.open('');
-      win.document.write(`<iframe src="${dataUrl}" style="width:100%;height:100vh;" frameborder="0"></iframe>`);
-    }
-  } catch (err) {
-    console.error('fetchMediaAndOpen erro:', err);
-  }
 }
 
 (function () {

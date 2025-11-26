@@ -30,6 +30,18 @@ function isStatusContact(chat) {
   return id.endsWith('@status') || id === 'status@broadcast';
 }
 
+/**
+ * Normaliza o ID único de uma mensagem (usa `_serialized` quando disponível).
+ */
+function getSerializedMessageId(message) {
+  if (!message) return null;
+  if (typeof message === 'string') return message;
+  const candidate = message.id || message.messageId || message._serialized || message;
+  if (!candidate) return null;
+  if (typeof candidate === 'string') return candidate;
+  return candidate._serialized || candidate.id || candidate._id || null;
+}
+
 class WhatsappManager {
   constructor() {
     this.clients = {};
@@ -37,6 +49,8 @@ class WhatsappManager {
     this.whatsappEvents = new EventEmitter();
     this.syncTaskStore = null;
     this.customNameCache = new Map();
+    this.contactLookupSupported = true; // desabilita dinamicamente caso WhatsApp mude APIs internas
+    this.contactLookupWarned = false;
   }
 
   /**
@@ -176,9 +190,7 @@ class WhatsappManager {
         });
     });
 
-    // =================================================================
-    // ADICIONADO: Ouve novas mensagens em tempo real
-    // =================================================================
+    
     client.on('message_create', async (message) => {
       // Ignora mensagens enviadas pelo próprio bot para evitar loops e duplicatas
       if (message.fromMe) {
@@ -186,6 +198,16 @@ class WhatsappManager {
       }
       // Ignora notificações de status, chamadas, etc. Processa apenas mensagens de texto/mídia.
       if (!message.from) {
+        return;
+      }
+
+      const serializedId = getSerializedMessageId(message);
+      if (!serializedId) {
+        console.warn(`[${deviceId}] Ignorando mensagem sem ID serializado válido.`);
+        return;
+      }
+
+      if (serializedId === 'status@broadcast' || message.from === 'status@broadcast' || message._data?.id?.remote === 'status@broadcast') {
         return;
       }
 
@@ -197,7 +219,7 @@ class WhatsappManager {
 
         // Salva a mensagem no banco de dados em segundo plano
         await WhatsappMessage.upsert({
-          id: message.id.id,
+          id: serializedId,
           deviceId: deviceId,
           chatId: chatId,
           body: message.body,
@@ -213,8 +235,8 @@ class WhatsappManager {
             const media = await message.downloadMedia();
             if (media && media.data) {
               await WhatsappMedia.create({
-                id: message.id.id, // Usa o ID da mensagem como ID da mídia
-                messageId: message.id.id,
+                id: serializedId,
+                messageId: serializedId,
                 chatId: chatId,
                 deviceId: deviceId,
                 empresa_id: this.clients[deviceId]?.empresaId || empresaId,
@@ -224,12 +246,18 @@ class WhatsappManager {
               });
             }
           } catch (mediaError) {
-            console.error(`[${deviceId}] Falha ao baixar ou salvar mídia da mensagem ${message.id.id}:`, mediaError);
+            console.error(`[${deviceId}] Falha ao baixar ou salvar mídia da mensagem ${serializedId}:`, mediaError);
           }
         }
         // CORREÇÃO: Busca o contato para obter o nome correto (pushname) em vez de usar notifyName.
-        const contact = await client.getContactById(chatId);
-        const remoteName = contact?.pushname || contact?.name || chatId.replace('@c.us', '');
+        // Em versões mais novas do WhatsApp Web alguns helpers podem faltar; fallback para dados locais.
+        let remoteName = message?._data?.notifyName || message?._data?.pushname || chatId.replace('@c.us', '');
+        const messageContact = typeof message.getContact === 'function'
+          ? await this.safeGetContact(() => message.getContact(), `[${deviceId}] message_create`)
+          : null;
+        if (messageContact) {
+          remoteName = messageContact.pushname || messageContact.name || remoteName;
+        }
         const customName = await this.getOrLoadCustomName(chatId, empresaId);
         const chatName = customName || remoteName;
 
@@ -469,33 +497,47 @@ class WhatsappManager {
                 }
 
                 if (messagesToPersist.length) {
-                  const rows = messagesToPersist.map(msg => {
-                    const safeTimestamp = Number.isFinite(msg.timestamp) ? msg.timestamp : Math.floor(Date.now() / 1000);
-                    return {
-                      id: msg.id.id,
-                      chatId,
-                      deviceId: deviceId,
-                      empresa_id: empresaId,
-                      body: msg.body,
-                      fromMe: msg.fromMe,
-                      type: msg.type,
-                      timestamp: safeTimestamp,
-                    };
-                  });
-                  await WhatsappMessage.bulkCreate(rows, {
-                    updateOnDuplicate: ['body', 'fromMe', 'type', 'timestamp']
-                  });
+                  const rows = messagesToPersist
+                    .map(msg => {
+                      const serializedId = getSerializedMessageId(msg);
+                      if (!serializedId) {
+                        console.warn(`[SYNC-WARN] Ignorando mensagem sem ID serializado no chat ${chatId}.`);
+                        return null;
+                      }
+                      const safeTimestamp = Number.isFinite(msg.timestamp) ? msg.timestamp : Math.floor(Date.now() / 1000);
+                      return {
+                        id: serializedId,
+                        chatId,
+                        deviceId: deviceId,
+                        empresa_id: empresaId,
+                        body: msg.body,
+                        fromMe: msg.fromMe,
+                        type: msg.type,
+                        timestamp: safeTimestamp,
+                      };
+                    })
+                    .filter(Boolean);
+                  if (rows.length) {
+                    await WhatsappMessage.bulkCreate(rows, {
+                      updateOnDuplicate: ['body', 'fromMe', 'type', 'timestamp']
+                    });
+                  }
                 }
 
                 if (messagesToPersist.length) {
                   for (const msg of messagesToPersist) {
                     if (msg.hasMedia) {
+                      const serializedId = getSerializedMessageId(msg);
+                      if (!serializedId) {
+                        console.warn(`[SYNC-WARN] Ignorando mídia sem ID serializado no chat ${chatId}.`);
+                        continue;
+                      }
                       try {
                         const media = await msg.downloadMedia();
                         if (media && media.data) {
                           await WhatsappMedia.upsert({
-                            id: msg.id.id,
-                            messageId: msg.id.id,
+                            id: serializedId,
+                            messageId: serializedId,
                             chatId,
                             deviceId: deviceId,
                             empresa_id: empresaId,
@@ -505,21 +547,18 @@ class WhatsappManager {
                           });
                         }
                       } catch (mediaError) {
-                        console.warn(`[SYNC-WARN] Não foi possível baixar ou salvar a mídia para a mensagem ${msg.id?.id}. Erro: ${mediaError.message}. Continuando...`);
+                        console.warn(`[SYNC-WARN] Não foi possível baixar ou salvar a mídia para a mensagem ${serializedId}. Erro: ${mediaError.message}. Continuando...`);
                       }
                     }
                   }
                 }
 
                 let contact = null;
-                try {
-                  contact = await chat.getContact();
-                } catch (contactErr) {
-                  try {
-                    contact = await clientInstance.getContactById(chatId);
-                  } catch (fallbackErr) {
-                    contact = null;
-                  }
+                if (typeof chat.getContact === 'function') {
+                  contact = await this.safeGetContact(() => chat.getContact(), `[${deviceId}] syncChats-chat`);
+                }
+                if (!contact && typeof clientInstance.getContactById === 'function') {
+                  contact = await this.safeGetContact(() => clientInstance.getContactById(chatId), `[${deviceId}] syncChats-client`);
                 }
 
                 const resolvedName = contact?.pushname || contact?.name || chat.name || chat.id.user || 'Contato';
@@ -654,7 +693,8 @@ class WhatsappManager {
       const finalChatId = chatId.includes('@') ? chatId : `${chatId}@c.us`;
 
       const sentMessage = await client.sendMessage(finalChatId, text);
-      console.log(`[${deviceId}] Mensagem enviada com sucesso para ${finalChatId}. ID: ${sentMessage.id.id}`);
+      const serializedId = getSerializedMessageId(sentMessage);
+      console.log(`[${deviceId}] Mensagem enviada com sucesso para ${finalChatId}. ID: ${serializedId}`);
 
       const empresaId = this.clients[deviceId]?.empresaId;
       if (!empresaId) {
@@ -665,7 +705,7 @@ class WhatsappManager {
 
       // Salva a mensagem enviada no banco de dados para manter o histórico
       await WhatsappMessage.upsert({
-        id: sentMessage.id.id,
+        id: serializedId,
         deviceId: deviceId,
         chatId: finalChatId,
         body: sentMessage.body,
@@ -717,11 +757,54 @@ class WhatsappManager {
         caption: filename, // Opcional: usa o nome do arquivo como legenda
       });
 
-      console.log(`[${deviceId}] Mídia enviada com sucesso para ${finalChatId}. ID: ${sentMessage.id.id}`);
+      const serializedId = getSerializedMessageId(sentMessage);
+      console.log(`[${deviceId}] Mídia enviada com sucesso para ${finalChatId}. ID: ${serializedId || 'desconhecido'}`);
 
-      // A lógica para salvar a mensagem/mídia enviada no banco de dados já é tratada
-      // pelo evento 'message_create' quando a mensagem é do próprio bot (fromMe: true).
-      // Não é necessário duplicar a lógica aqui.
+      const empresaId = this.clients[deviceId]?.empresaId;
+      if (empresaId && serializedId) {
+        const safeTimestamp = Number.isFinite(sentMessage.timestamp)
+          ? sentMessage.timestamp
+          : Math.floor(Date.now() / 1000);
+        const fallbackBody = sentMessage.body && sentMessage.body.length
+          ? sentMessage.body
+          : (filename ? `[Mídia] ${filename}` : '[Mídia]');
+        const normalizedType = sentMessage.type || (media.mimetype?.startsWith('audio/') ? 'audio' : 'media');
+
+        try {
+          await WhatsappMessage.upsert({
+            id: serializedId,
+            deviceId,
+            chatId: finalChatId,
+            body: fallbackBody,
+            fromMe: true,
+            type: normalizedType,
+            timestamp: safeTimestamp,
+            empresa_id: empresaId,
+          });
+
+          if (media?.data) {
+            await WhatsappMedia.upsert({
+              id: serializedId,
+              messageId: serializedId,
+              chatId: finalChatId,
+              deviceId,
+              empresa_id: empresaId,
+              mimetype: mimetype || media.mimetype,
+              filename: filename || media.filename || 'arquivo',
+              data: media.data,
+            });
+          }
+
+          await Conversation.update({
+            last_message: fallbackBody,
+            timestamp: new Date(safeTimestamp * 1000),
+          }, {
+            where: { id: finalChatId, empresa_id: empresaId }
+          });
+        } catch (persistError) {
+          console.error(`[${deviceId}] Falha ao persistir mídia enviada ${serializedId}:`, persistError);
+        }
+      }
 
       return sentMessage.rawData;
 
@@ -778,18 +861,22 @@ class WhatsappManager {
       throw new Error(`Chat com ID ${chatId} não encontrado.`);
     }
 
-    const contact = await chat.getContact();
+    const contact = typeof chat.getContact === 'function'
+      ? await this.safeGetContact(() => chat.getContact(), `[${deviceId}] syncSingleChat`)
+      : null;
 
     // 1. Atualiza os dados da conversa (nome, foto, etc.)
     const customName = await this.getOrLoadCustomName(chat.id._serialized, empresaId);
-    const singleChatName = customName || contact.pushname || contact.name || chat.id.user;
+    const singleChatName = customName || contact?.pushname || contact?.name || chat.id.user;
 
     await Conversation.upsert({
       id: chat.id._serialized,
       empresa_id: empresaId,
       name: singleChatName,
       custom_name: customName || null,
-      profile_pic_url: await contact.getProfilePicUrl().catch(() => null),
+      profile_pic_url: contact && typeof contact.getProfilePicUrl === 'function'
+        ? await contact.getProfilePicUrl().catch(() => null)
+        : null,
       unread_count: chat.unreadCount, // Atualiza o contador de não lidas
       is_group: chat.isGroup,
       source: 'whatsapp',
@@ -807,8 +894,14 @@ class WhatsappManager {
     const mediaToSave = [];
 
     for (const msg of messages) {
+      const serializedId = getSerializedMessageId(msg);
+      if (!serializedId) {
+        console.warn(`[SYNC-SINGLE] Ignorando mensagem sem ID serializado no chat ${chatId}.`);
+        continue;
+      }
+
       messagesToSave.push({
-        id: msg.id.id,
+        id: serializedId,
         chatId: chat.id._serialized,
         deviceId: deviceId,
         empresa_id: empresaId,
@@ -823,8 +916,8 @@ class WhatsappManager {
           const media = await msg.downloadMedia();
           if (media && media.data) {
             mediaToSave.push({
-              id: msg.id.id,
-              messageId: msg.id.id,
+              id: serializedId,
+              messageId: serializedId,
               chatId: chat.id._serialized,
               deviceId: deviceId,
               empresa_id: empresaId,
@@ -834,7 +927,7 @@ class WhatsappManager {
             });
           }
         } catch (mediaError) {
-          console.error(`[SYNC-SINGLE] Falha ao baixar mídia para a mensagem ${msg.id.id}:`, mediaError.message);
+          console.error(`[SYNC-SINGLE] Falha ao baixar mídia para a mensagem ${serializedId}:`, mediaError.message);
         }
       }
     }
@@ -851,6 +944,32 @@ class WhatsappManager {
           wsClient.send(JSON.stringify({ type: 'chat-updated', deviceId, chatId }));
         }
       });
+    }
+  }
+
+  /**
+   * Tenta obter dados do contato sem derrubar o fluxo quando o WhatsApp altera APIs internas.
+   * Define uma flag global para evitar chamadas subsequentes ao detectar quebra.
+   */
+  async safeGetContact(fetchFn, contextLabel, { critical = false } = {}) {
+    if (!critical && !this.contactLookupSupported) {
+      return null;
+    }
+    if (typeof fetchFn !== 'function') {
+      return null;
+    }
+    try {
+      return await fetchFn();
+    } catch (error) {
+      if (critical) {
+        throw error;
+      }
+      this.contactLookupSupported = false;
+      if (!this.contactLookupWarned) {
+        this.contactLookupWarned = true;
+        console.warn(`[WhatsAppManager] Desativando lookup detalhado de contato (API mudou):`, error?.message || error);
+      }
+      return null;
     }
   }
 
@@ -993,7 +1112,7 @@ class WhatsappManager {
       throw new Error('Contato não informado.');
     }
 
-    const contact = await client.getContactById(chatId);
+    const contact = await this.safeGetContact(() => client.getContactById(chatId), `[${deviceId}] block-state`, { critical: true });
     if (!contact) {
       throw new Error('Contato não encontrado no WhatsApp.');
     }
@@ -1027,13 +1146,9 @@ class WhatsappManager {
       fallbackName = chatId.replace('@c.us', '');
     }
 
-    if (client) {
-      try {
-        const contact = await client.getContactById(chatId);
-        fallbackName = contact?.pushname || contact?.name || fallbackName;
-      } catch (err) {
-        console.warn(`[${deviceId}] Não foi possível obter nome remoto para ${chatId}:`, err.message);
-      }
+    if (client && typeof client.getContactById === 'function') {
+      const contact = await this.safeGetContact(() => client.getContactById(chatId), `[${deviceId}] rename`);
+      fallbackName = contact?.pushname || contact?.name || fallbackName;
     }
 
     const finalName = trimmedName || fallbackName || chatId;
