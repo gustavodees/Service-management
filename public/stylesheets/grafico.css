@@ -1,3 +1,4 @@
+/* Página de gráficos (tabulações agregadas) renderizada com Chart.js. */
 .grafico-page {
   min-height: calc(100vh - 60px);
   padding: 30px;

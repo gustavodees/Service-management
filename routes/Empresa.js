@@ -1,3 +1,7 @@
+/**
+ * Modela entidades corporativas cadastradas no sistema, incluindo status operacional
+ * (pendente/aprovado/bloqueado/rejeitado) e vínculo com usuários administradores.
+ */
 const { DataTypes } = require('sequelize');
 const sequelize = require('./banco');
 const Usuario = require('./Usuario');

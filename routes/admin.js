@@ -1,3 +1,8 @@
+/**
+ * Rotas e controladores do painel administrativo. Este módulo concentra fluxos de
+ * autenticação privilegiada, aprovação de empresas, gestão de usuários/dispositivos
+ * e dashboards corporativos (admin host e super_admin).
+ */
 const express = require('express');
 const router = express.Router();
 const { Op } = require('sequelize'); // Adicionado para filtros
@@ -20,7 +25,13 @@ const verificaAcessoMestre = require('./verificaAcessoMestre'); // <<< ADICIONAD
 // --- MEDIDAS DE SEGURANÇA PARA ROTAS ADMIN ---
 // (Este trecho foi movido da sua resposta anterior para cá para centralizar a lógica)
 
-// Middleware para garantir que apenas o admin "host" (sem empresa_id) acesse
+/**
+ * Garante que somente o administrador host (sem empresa atrelada) acesse rotas
+ * específicas do painel administrativo.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ */
 function verificaAdminHost(req, res, next) {
   if (req.session.usuario && req.session.usuario.tipo === 'admin' && !req.session.usuario.empresa_id) {
     return next();
@@ -29,7 +40,12 @@ function verificaAdminHost(req, res, next) {
   res.status(403).render('error', { message: 'Acesso Negado', error: { status: 403, stack: 'Você não tem permissão para acessar esta página.' } });
 }
 
-// Middleware para garantir que apenas o super_admin acesse
+/**
+ * Restringe acesso a rotas que exigem privilégios de super_administrador.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ */
 function verificaSuperAdmin(req, res, next) {
   if (req.session.usuario && req.session.usuario.tipo === 'super_admin') {
     return next();
@@ -48,12 +64,18 @@ const adminLoginLimiter = rateLimit({
 
 // --- ROTAS DE LOGIN E AUTENTICAÇÃO DO ADMIN ---
 
-// GET /admin/login - Exibe a página de login do admin
+/**
+ * GET /admin/login
+ * Renderiza a tela de autenticação para administradores host.
+ */
 router.get('/login', (req, res) => {
   res.render('admin-login', { title: 'Acesso Restrito' });
 });
 
-// POST /admin/login - Processa o login do admin
+/**
+ * POST /admin/login
+ * Valida credenciais do admin host, aciona MFA quando habilitado e inicia sessão.
+ */
 router.post('/login', adminLoginLimiter, async (req, res) => {
   const { email, senha } = req.body;
   
@@ -103,7 +125,10 @@ router.post('/login', adminLoginLimiter, async (req, res) => {
   }
 });
 
-// GET /admin/mfa-verify - Exibe a página de verificação de 2FA
+/**
+ * GET /admin/mfa-verify
+ * Exibe o formulário para validação do código TOTP após login com senha.
+ */
 router.get('/mfa-verify', (req, res) => {
   // Se o usuário não passou pela etapa de senha, redireciona para o login
   if (!req.session.mfa_userid) {
@@ -112,7 +137,10 @@ router.get('/mfa-verify', (req, res) => {
   res.render('mfa-verify');
 });
 
-// POST /admin/mfa-verify - Valida o código 2FA
+/**
+ * POST /admin/mfa-verify
+ * Confere o token TOTP gerado por aplicativos autenticadores e conclui o login.
+ */
 router.post('/mfa-verify', async (req, res) => {
   const { token } = req.body;
   const { mfa_userid } = req.session;
@@ -143,7 +171,10 @@ router.post('/mfa-verify', async (req, res) => {
   }
 });
 
-/* GET página de aprovação de empresas */
+/**
+ * GET /admin/aprovar-empresas
+ * Lista empresas pendentes (status 1) para aprovação manual pelo admin mestre.
+ */
 router.get('/aprovar-empresas', verificaAutenticacao, verificaAcessoMestre, async (req, res) => {
   try {
     const empresasPendentes = await Empresa.findAll({ // Alterado para buscar status 1 (pendente)
@@ -161,7 +192,10 @@ router.get('/aprovar-empresas', verificaAutenticacao, verificaAcessoMestre, asyn
   }
 });
 
-/* POST para aprovar uma empresa */
+/**
+ * POST /admin/aprovar-empresa/:id
+ * Atualiza o status da empresa para aprovado (2) e registra log de auditoria.
+ */
 router.post('/aprovar-empresa/:id', verificaAutenticacao, verificaAcessoMestre, async (req, res) => {
   try {
     const empresa = await Empresa.findByPk(req.params.id);
@@ -182,7 +216,10 @@ router.post('/aprovar-empresa/:id', verificaAutenticacao, verificaAcessoMestre, 
   }
 });
 
-/* POST para rejeitar uma empresa */
+/**
+ * POST /admin/rejeitar-empresa/:id
+ * Marca a empresa como rejeitada (-2) e registra a decisão em ActivityLog.
+ */
 router.post('/rejeitar-empresa/:id', verificaAutenticacao, verificaAcessoMestre, async (req, res) => {
   try {
     const empresa = await Empresa.findByPk(req.params.id);
@@ -203,7 +240,10 @@ router.post('/rejeitar-empresa/:id', verificaAutenticacao, verificaAcessoMestre,
   }
 });
 
-/* GET página de gerenciamento de todas as empresas */
+/**
+ * GET /admin/gerenciar-empresas
+ * Exibe todas as empresas cadastradas com contagem de usuários para ações em massa.
+ */
 router.get('/gerenciar-empresas', verificaAutenticacao, verificaAcessoMestre, async (req, res) => {
   try {
     const empresas = await Empresa.findAll({
@@ -221,7 +261,10 @@ router.get('/gerenciar-empresas', verificaAutenticacao, verificaAcessoMestre, as
   }
 });
 
-/* GET página para editar uma empresa */
+/**
+ * GET /admin/editar-empresa/:id
+ * Renderiza o formulário de edição com os dados atuais da empresa alvo.
+ */
 router.get('/editar-empresa/:id', verificaAutenticacao, verificaAcessoMestre, async (req, res) => {
   try {
     const empresa = await Empresa.findByPk(req.params.id);
@@ -239,7 +282,10 @@ router.get('/editar-empresa/:id', verificaAutenticacao, verificaAcessoMestre, as
   }
 });
 
-/* POST para salvar a edição de uma empresa */
+/**
+ * POST /admin/editar-empresa/:id
+ * Persiste alterações cadastrais e registra ActivityLog correspondente.
+ */
 router.post('/editar-empresa/:id', verificaAutenticacao, verificaAcessoMestre, async (req, res) => {
   const { id } = req.params;
   const { nome_fantasia, razao_social, cnpj, status } = req.body;
@@ -267,7 +313,10 @@ router.post('/editar-empresa/:id', verificaAutenticacao, verificaAcessoMestre, a
   }
 });
 
-/* POST para bloquear/desbloquear uma empresa */
+/**
+ * POST /admin/alternar-status-empresa/:id
+ * Alterna entre status aprovado (2) e bloqueado (-1) para controle rápido.
+ */
 router.post('/alternar-status-empresa/:id', verificaAutenticacao, verificaAcessoMestre, async (req, res) => {
   try {
     const empresa = await Empresa.findByPk(req.params.id);
@@ -291,7 +340,10 @@ router.post('/alternar-status-empresa/:id', verificaAutenticacao, verificaAcesso
   }
 });
 
-/* POST para remover uma empresa */
+/**
+ * POST /admin/remover-empresa/:id
+ * Executa remoção em cascata da empresa e dependências em transação atômica.
+ */
 router.post('/remover-empresa/:id', verificaAutenticacao, verificaAcessoMestre, async (req, res) => {
   const { id } = req.params;
   const t = await Empresa.sequelize.transaction();
@@ -339,7 +391,10 @@ router.post('/remover-empresa/:id', verificaAutenticacao, verificaAcessoMestre, 
   }
 });
 
-// Rota de exemplo para o dashboard do admin
+/**
+ * GET /admin/dashboard
+ * Painel principal para administradores host com visão consolidada.
+ */
 router.get('/dashboard', verificaAutenticacao, verificaAdminHost, (req, res) => {
     res.render('admin-dashboard', { title: 'Painel do Administrador' }); // Crie esta view
 });
@@ -348,12 +403,18 @@ router.get('/dashboard', verificaAutenticacao, verificaAdminHost, (req, res) => 
 // NOVAS ROTAS PARA O DASHBOARD DO SUPER ADMIN
 // =================================================================
 
-// GET /admin/super-dashboard - Renderiza a página do dashboard
+/**
+ * GET /admin/super-dashboard
+ * Dashboard corporativo para super_admin com visão geral das empresas.
+ */
 router.get('/super-dashboard', verificaAutenticacao, verificaSuperAdmin, (req, res) => {
   res.render('super-admin-dashboard', { title: 'Dashboard Geral' });
 });
 
-// GET /admin/api/empresas-aprovadas - API para listar empresas aprovadas
+/**
+ * GET /admin/api/empresas-aprovadas
+ * Retorna lista JSON das empresas em status aprovado (2) para o dashboard.
+ */
 router.get('/api/empresas-aprovadas', verificaAutenticacao, verificaSuperAdmin, async (req, res) => {
   try {
     const empresas = await Empresa.findAll({
@@ -367,7 +428,10 @@ router.get('/api/empresas-aprovadas', verificaAutenticacao, verificaSuperAdmin, 
   }
 });
 
-// GET /admin/api/empresa/:id/funcionarios - API para listar funcionários de uma empresa
+/**
+ * GET /admin/api/empresa/:id/funcionarios
+ * Retorna colaboradores da empresa alvo para alimentar tabelas dinâmicas.
+ */
 router.get('/api/empresa/:id/funcionarios', verificaAutenticacao, verificaSuperAdmin, async (req, res) => {
   try {
     const funcionarios = await Usuario.findAll({
@@ -381,7 +445,10 @@ router.get('/api/empresa/:id/funcionarios', verificaAutenticacao, verificaSuperA
   }
 });
 
-// GET /admin/api/user/:id/whatsapp-status - API para ver conexões WhatsApp de um usuário
+/**
+ * GET /admin/api/user/:id/whatsapp-status
+ * Exibe dispositivos WhatsApp registrados por um usuário específico.
+ */
 router.get('/api/user/:id/whatsapp-status', verificaAutenticacao, verificaSuperAdmin, async (req, res) => {
   try {
     const devices = await WhatsappDevice.findAll({ where: { user_id: req.params.id } });
@@ -392,7 +459,10 @@ router.get('/api/user/:id/whatsapp-status', verificaAutenticacao, verificaSuperA
   }
 });
 
-// GET /admin/api/user/:id/chatbot-status - API para ver conexões Chatbot de um usuário
+/**
+ * GET /admin/api/user/:id/chatbot-status
+ * Mostra instâncias de chatbot conectadas pertencentes ao usuário informado.
+ */
 router.get('/api/user/:id/chatbot-status', verificaAutenticacao, verificaSuperAdmin, async (req, res) => {
   try {
     const bots = await ChatbotDevice.findAll({ where: { user_id: req.params.id } });
@@ -403,7 +473,10 @@ router.get('/api/user/:id/chatbot-status', verificaAutenticacao, verificaSuperAd
   }
 });
 
-// GET /admin/logs - Exibe a página de logs de atividade
+/**
+ * GET /admin/logs
+ * Renderiza a listagem paginada de ActivityLogs com filtros avançados.
+ */
 router.get('/logs', verificaAutenticacao, async (req, res) => {
   try {
     // 1. Verifica se o usuário é admin. Se não for, nega o acesso.

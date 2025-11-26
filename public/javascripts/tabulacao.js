@@ -1,3 +1,7 @@
+/**
+ * Responsável pela camada de front-end do relatório de tabulações: mantém cache
+ * em memória, filtros por status/mês e integrações com WebSocket.
+ */
 let tabulacoesCache = {};
 let selectedMonth = null; // YYYY-MM
 // Novo: status atual

@@ -1,9 +1,22 @@
 #!/usr/bin/env node
+/**
+ * CLI bootstrapper responsável por autenticar no banco, registrar todos os models
+ * declarados em `routes/` e executar o `sequelize.sync({ alter: true })`.
+ * Use `node startBD.js` sempre que precisar garantir que o schema esteja atualizado
+ * antes de iniciar o servidor principal.
+ */
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const sequelize = require('./routes/banco');
 
+/**
+ * Executa o fluxo de bootstrap do banco de dados:
+ * 1. Autentica a conexão Sequelize.
+ * 2. Requer todos os arquivos `.js` em `routes/` para registrar models.
+ * 3. Sincroniza os modelos com o banco (`alter: true`).
+ * 4. Fecha a conexão ao final.
+ */
 async function bootstrap() {
   try {
     // autentica

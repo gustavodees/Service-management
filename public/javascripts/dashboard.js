@@ -1,3 +1,7 @@
+/**
+ * Controla o comportamento de colapsar/expandir a sidebar nos dashboards
+ * internos, persistindo a preferência no localStorage.
+ */
 document.addEventListener('DOMContentLoaded', () => {
   const toggleBtn = document.querySelector('.toggle-menu a');
   const body = document.body;

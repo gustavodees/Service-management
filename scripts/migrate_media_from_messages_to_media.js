@@ -1,9 +1,16 @@
+/**
+ * Script de migração que move blobs base64 de `whatsapp_messages.data` para a
+ * tabela `whatsapp_media`, evitando duplicação e reduzindo o tamanho da tabela.
+ */
 const path = require('path');
 const sequelize = require('../routes/banco');
 const { Op } = require('sequelize');
 const WhatsappMessage = require('../routes/WhatsappMessage');
 const WhatsappMedia = require('../routes/WhatsappMedia');
 
+/**
+ * Percorre mensagens legadas e cria registros equivalentes em whatsapp_media.
+ */
 async function migrate() {
   console.log('Conectando ao DB...');
   await sequelize.authenticate();

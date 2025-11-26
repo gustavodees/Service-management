@@ -1,13 +1,18 @@
+/**
+ * Router placeholder mantido temporariamente por compatibilidade com pontos do
+ * código que ainda importam `./whatsapp`. Todos os métodos expostos aqui apenas
+ * logam uso legado para facilitar o rastreamento até que o módulo seja removido.
+ */
 const express = require('express');
 const router = express.Router();
 
+console.warn('Legacy whatsapp.js carregado. Remover após migração completa para whatsappManager.');
 
-
-console.log('--- WARNING: Legacy whatsapp.js module loaded. This should be removed after refactoring users.js ---');
-
+/**
+ * Função no-op utilizada como fallback para APIs antigas.
+ */
 function doNothing() {
   console.log('Legacy whatsapp.js function called. This should be refactored.');
-  return;
 }
 
 const dummyClients = () => ({});
@@ -21,8 +26,10 @@ router.setLastMassSend = doNothing;
 router.clearTabulationsForUser = doNothing;
 router.getAllContacts = () => [];
 router.getLastMassSend = () => dummyLastMassSend;
+/**
+ * Upgrade handler legado — apenas alerta quando o fluxo antigo é acionado.
+ */
 router.handleUpgrade = (request, socket, head, wss) => {
-  // This is intentionally left blank. The upgrade is handled in app.js
   console.log('Legacy whatsapp.js handleUpgrade called. This indicates a configuration problem.');
 };
 

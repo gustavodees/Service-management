@@ -1,3 +1,7 @@
+/**
+ * Model que representa os dispositivos de chatbot conectados via whatsapp-web.js.
+ * Mantém status, número, timestamps e vínculo com usuário/empresa para auditoria.
+ */
 const { DataTypes } = require('sequelize');
 const sequelizeUser = require('./banco');
 

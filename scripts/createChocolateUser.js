@@ -1,7 +1,14 @@
+/**
+ * CLI auxiliar para criar/garantir o usuário "Chocolate" (admin host) com senha
+ * padrão. Execute `node scripts/createChocolateUser.js` em ambientes de teste.
+ */
 const bcrypt = require('bcryptjs');
 const Usuario = require('../routes/Usuario');
 const sequelize = require('../routes/banco');
  
+/**
+ * Autentica no banco, sincroniza modelos e cria o usuário se não existir.
+ */
 async function run() {
     try {
         await sequelize.authenticate();

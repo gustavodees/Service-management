@@ -1,3 +1,6 @@
+/**
+ * Utilitários para consolidação das tabulações usadas em dashboards e filtros de equipe.
+ */
 const Tabulacao = require('./Tabulacao');
 
 const TAB_KEYS = [
@@ -9,6 +12,9 @@ const TAB_KEYS = [
   'sem-interesse'
 ];
 
+/**
+ * Cria um objeto com todas as chaves de tabulação mapeadas para arrays vazios.
+ */
 function buildEmptyTabMap() {
   const tab = {};
   TAB_KEYS.forEach((key) => {
@@ -17,6 +23,9 @@ function buildEmptyTabMap() {
   return tab;
 }
 
+/**
+ * Agrupa tabulações por categoria respeitando o escopo (usuário/equipe) e empresa ativa.
+ */
 async function getTabulacoesGrouped({ scope, userIdParam, session, empresaIdOverride = null }) {
   if (!session || !session.usuario) {
     const err = new Error('Sessão não encontrada. Faça login novamente.');

@@ -1,3 +1,8 @@
+/**
+ * Configuração central do Sequelize. Responsável por ler as variáveis de ambiente
+ * definidas no `.env`, instanciar a conexão com o MySQL e disponibilizar o objeto
+ * compartilhado entre todos os models.
+ */
 require('dotenv').config(); // carregar .env se existir
 
 const { Sequelize } = require('sequelize');

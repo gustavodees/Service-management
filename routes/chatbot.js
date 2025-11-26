@@ -1,3 +1,7 @@
+/**
+ * Módulo responsável por gerenciar conexões de chatbot via whatsapp-web.js,
+ * tratar mensagens com IA Gemini e expor rotas/WS para o painel de atendimento.
+ */
 const express = require('express');
 const router = express.Router();
 const QRCode = require('qrcode');

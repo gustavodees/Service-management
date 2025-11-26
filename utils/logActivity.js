@@ -1,6 +1,12 @@
+/**
+ * Helper centralizado para registrar auditorias sem duplicar blocos try/catch
+ * nas rotas. Normaliza campos opcionais para manter consistência.
+ */
 const ActivityLog = require('../routes/ActivityLog');
 
-// Simple helper to avoid duplicated try/catch blocks when writing activity logs
+/**
+ * Persiste um registro na tabela `activity_logs`.
+ */
 async function logActivity({ userId, empresaId, action, details, ipAddress }) {
   if (!action) {
     return;

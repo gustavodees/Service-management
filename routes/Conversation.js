@@ -1,3 +1,7 @@
+/**
+ * Representa o estado consolidado de cada conversa sincronizada (WhatsApp/Chatbot).
+ * Utilizada para renderizar filas, histórico e aplicar ações rápidas de arquivar/bloquear.
+ */
 const { DataTypes } = require('sequelize');
 const sequelize = require('./banco');
 

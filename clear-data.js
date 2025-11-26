@@ -7,7 +7,8 @@
  * - whatsapp_messages
  * - whatsapp_devices
  *
- * Use com cuidado. É recomendado fazer um backup do banco de dados antes de executar.
+ * Use com cuidado. Faça backup antes de prosseguir e sempre execute com a
+ * aplicação parada para evitar corrupção de sessão.
  *
  * Como usar:
  * 1. Pare a aplicação principal (nodemon/node).
@@ -25,6 +26,11 @@ const WhatsappDevice = require('./routes/whatsappDevice');
 const WhatsappMedia = require('./routes/WhatsappMedia');
 const WhatsappMessage = require('./routes/WhatsappMessage');
 
+/**
+ * Remove todo o conteúdo das tabelas de atendimento, desabilitando os checkes de
+ * chave estrangeira temporariamente para evitar erros de ordem de exclusão.
+ * Ideal para resetar ambientes de homologação com grande volume de mensagens.
+ */
 async function clearTables() {
   console.log('Iniciando a limpeza das tabelas de atendimento...');
 
@@ -52,5 +58,5 @@ async function clearTables() {
   }
 }
 
-// Executa a função
+// Executa a função principal quando o script é chamado via CLI
 clearTables();

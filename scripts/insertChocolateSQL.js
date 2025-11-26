@@ -1,5 +1,12 @@
+/**
+ * Script rápido para gerar o comando SQL de criação do usuário "Chocolate" com
+ * senha hash segura. Útil quando preferir inserir direto via banco.
+ */
 const bcrypt = require('bcryptjs');
 
+/**
+ * Calcula o hash e imprime o INSERT completo para uso manual.
+ */
 async function printInsertSQL() {
   const plain = '123456789';
   const saltRounds = 10;

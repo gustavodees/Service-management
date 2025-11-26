@@ -1,3 +1,7 @@
+/**
+ * Camada de interação do dashboard do super admin: lista empresas aprovadas,
+ * funcionários e conexões ativas, consumindo as rotas /admin/api.
+ */
 document.addEventListener('DOMContentLoaded', () => {
   const empresasContainer = document.getElementById('empresas-container');
   const empresaTemplate = document.getElementById('empresa-template');

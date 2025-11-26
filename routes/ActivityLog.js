@@ -1,3 +1,8 @@
+/**
+ * Model responsável por registrar auditorias de ações críticas realizadas no sistema.
+ * Cada log relaciona um usuário e/ou empresa, permitindo rastreabilidade completa
+ * para o módulo de Governança.
+ */
 const { DataTypes } = require('sequelize');
 const sequelize = require('./banco');
 const Usuario = require('./Usuario');
@@ -48,7 +53,7 @@ const ActivityLog = sequelize.define('ActivityLog', {
     timestamps: false // Já temos a coluna 'timestamp'
 });
 
-// Adicionado: Define a associação para que possamos usar `include`
+// Associações facilitam `include` nas consultas e mantêm consistência relacional
 ActivityLog.belongsTo(Usuario, { foreignKey: 'user_id' });
 Usuario.hasMany(ActivityLog, { foreignKey: 'user_id' });
 

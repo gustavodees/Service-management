@@ -1,3 +1,8 @@
+/**
+ * Rotas públicas e semi-autenticadas da plataforma.
+ * Abrange login/logout, onboarding de empresas, gerenciamento do prompt da IA
+ * e telas principais acessíveis após autenticação padrão (não administrativas).
+ */
 const express = require('express');
 const router = express.Router();
 const Usuario = require('./Usuario');
@@ -11,12 +16,18 @@ const fs = require('fs');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
 
-/* GET home page. */
+/**
+ * GET /
+ * Renderiza a landing page institucional para visitantes não autenticados.
+ */
 router.get('/', (req, res) => {
   res.render('landing', { title: 'Bem-vindo à Service-management' }); // Renderiza a landing page para visitantes
 });
 
-/* GET login page. */
+/**
+ * GET /login
+ * Exibe o formulário de autenticação corporativa (CNPJ + usuário).
+ */
 router.get('/login', function(req, res, next) {
   res.render('login', { title: 'Login - Sistema Service-management' }); // CORRIGIDO: Renderiza a nova página de login
 });
@@ -37,7 +48,11 @@ const cnpjLimiter = rateLimit({
   message: 'Muitas solicitações de validação de CNPJ. Tente novamente mais tarde.',
 });
 
-/* POST login form. */
+/**
+ * POST /login
+ * Fluxo principal de autenticação incluindo bypass mestre, validação de empresa
+ * e consolidação de sessão.
+ */
 router.post('/login', loginLimiter, async (req, res) => {
   const { cnpj, email, senha } = req.body;
   try {
@@ -167,7 +182,10 @@ router.post('/login', loginLimiter, async (req, res) => {
   }
 });
 
-/* GET logout */
+/**
+ * GET /logout
+ * Encerra a sessão ativa registrando LOGOUT no ActivityLog.
+ */
 router.get('/logout', async (req, res) => {
   if (req.session.usuario) {
     const userInfo = { ...req.session.usuario };
@@ -191,7 +209,10 @@ router.get('/logout', async (req, res) => {
   }
 });
 
-/* GET WhatsApp page. */
+/**
+ * GET /whatsapp
+ * Painel de dispositivos WhatsApp após autenticação.
+ */
 router.get('/whatsapp', verificaAutenticacao, function(req, res) {
   res.render('whatsapp', { 
     title: 'WhatsApp Connect',
@@ -199,7 +220,10 @@ router.get('/whatsapp', verificaAutenticacao, function(req, res) {
   });
 });
 
-/* GET Chatbot page. */
+/**
+ * GET /chatbot
+ * Interface para configurar dispositivos de chatbot.
+ */
 router.get('/chatbot', verificaAutenticacao, function(req, res) {
   res.render('chatbot', { 
     title: 'Chatbot Service',
@@ -207,7 +231,10 @@ router.get('/chatbot', verificaAutenticacao, function(req, res) {
   });
 });
 
-/* POST para processar mensagens do chatbot */
+/**
+ * POST /api/chatbot
+ * Endpoint mock para testes locais do chatbot.
+ */
 router.post('/api/chatbot', function(req, res) {
   const { mensagem } = req.body;
   const resposta = {
@@ -220,7 +247,10 @@ router.post('/api/chatbot', function(req, res) {
 // Caminho do arquivo de treinamento
 const treinamentoPath = path.join(__dirname, '../ia-treinamento.txt');
 
-// Rota GET para página IA (carrega o treinamento atual)
+/**
+ * GET /ia
+ * Exibe a página de edição do prompt da IA (restrita a admins/super_admins).
+ */
 router.get('/ia', verificaAutenticacao, function(req, res, next) {
   // apenas admin
   if (!req.session.usuario || !['admin', 'super_admin'].includes(req.session.usuario.tipo)) {
@@ -242,7 +272,10 @@ router.get('/ia', verificaAutenticacao, function(req, res, next) {
   });
 });
 
-// Rota POST para salvar treinamento — apenas admin
+/**
+ * POST /ia/treinamento
+ * Persiste alterações no arquivo de treinamento do chatbot IA.
+ */
 router.post('/ia/treinamento', verificaAutenticacao, async function(req, res) {
   if (!req.session.usuario || !['admin', 'super_admin'].includes(req.session.usuario.tipo)) {
     return res.status(403).json({ success: false, error: 'Acesso negado' });
@@ -264,12 +297,18 @@ router.post('/ia/treinamento', verificaAutenticacao, async function(req, res) {
   }
 });
 
-/* GET página de cadastro de empresa */
+/**
+ * GET /cadastro-empresa
+ * Mostra formulário de onboarding corporativo.
+ */
 router.get('/cadastro-empresa', (req, res) => {
   res.render('cadastro-empresa', { title: 'Cadastro de Empresa - Service-management' });
 });
 
-/* POST para criar nova empresa e usuário admin */
+/**
+ * POST /cadastro-empresa
+ * Cria a empresa, usuário admin inicial e registra o pedido no ActivityLog.
+ */
 router.post('/cadastro-empresa', async (req, res) => {
   const {
     nome_fantasia,
@@ -345,7 +384,10 @@ router.post('/cadastro-empresa', async (req, res) => {
   }
 });
 
-/* NOVA ROTA: POST /api/validar-cnpj */
+/**
+ * POST /api/validar-cnpj
+ * Pré-validação do CNPJ no formulário de login/cadastro.
+ */
 router.post('/api/validar-cnpj', cnpjLimiter, async (req, res) => {
   try {
     const { cnpj } = req.body;

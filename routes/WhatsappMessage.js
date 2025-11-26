@@ -1,3 +1,7 @@
+/**
+ * Histórico bruto de mensagens sincronizadas (texto e metadata). Mídias associadas
+ * ficam em `WhatsappMedia` para evitar payloads grandes na tabela principal.
+ */
 const { DataTypes } = require('sequelize');
 const sequelize = require('./banco');
 const WhatsappMedia = require('./WhatsappMedia'); // Importa o modelo de mídia

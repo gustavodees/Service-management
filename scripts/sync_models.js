@@ -1,3 +1,7 @@
+/**
+ * Script rápido para sincronizar (alter) os principais models relacionados ao
+ * WhatsApp. Utilize em migrações leves sem precisar subir toda a aplicação.
+ */
 const sequelize = require('../routes/banco');
 const WhatsappMessage = require('../routes/WhatsappMessage');
 const WhatsappMedia = require('../routes/WhatsappMedia');

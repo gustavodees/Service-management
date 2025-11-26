@@ -1,3 +1,7 @@
+/**
+ * Habilita arrastar/soltar arquivos diretamente no painel do chat e envia o
+ * conteúdo via endpoint /upload-files, exibindo overlay visual.
+ */
 document.addEventListener('DOMContentLoaded', () => {
   // O alvo da nossa funcionalidade é o painel do chat.
   const chatPanel = document.querySelector('.chat-panel');

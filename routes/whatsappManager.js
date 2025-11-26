@@ -1,3 +1,7 @@
+/**
+ * Centraliza a gestão de clientes whatsapp-web.js (múltiplos devices), incluindo
+ * sincronização de histórico, evento de QR e broadcasting para o front-end.
+ */
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const { EventEmitter } = require('events');
 const { v4: uuidv4 } = require('uuid'); // Adicionado para gerar IDs de tarefa
@@ -14,6 +18,9 @@ const MESSAGE_FETCH_LIMIT = Math.max(parseInt(process.env.SYNC_MESSAGE_LIMIT || 
 const ALLOW_ARCHIVED_MESSAGE_FETCH = (process.env.SYNC_ARCHIVED_FETCH_MESSAGES || '').toLowerCase() === 'true';
 
 // Helper to identify and skip status broadcast contacts
+/**
+ * Identifica chats de status/broadcast para evitar carregamento desnecessário.
+ */
 function isStatusContact(chat) {
   if (!chat) return false;
   if (chat.isStatus === true) return true;
@@ -32,14 +39,23 @@ class WhatsappManager {
     this.customNameCache = new Map();
   }
 
+  /**
+   * Injeta o WebSocketServer utilizado para broadcastar eventos de status/QR.
+   */
   setWebSocket(wss) {
     this.wss = wss;
   }
 
+  /**
+   * Define o storage em memória utilizado para reportar progresso das sincronizações.
+   */
   setSyncTaskStore(store) {
     this.syncTaskStore = store;
   }
 
+  /**
+   * Recupera o status resumido de um client (QR atual e flag de pronto).
+   */
   getClientStatus(deviceId) {
     return this.clients[deviceId] ? {
       isReady: this.clients[deviceId].isReady,
@@ -50,6 +66,9 @@ class WhatsappManager {
   // =================================================================
   // ADICIONADO: Método para obter a instância do cliente
   // =================================================================
+  /**
+   * Retorna instância whatsapp-web.js pronta para uso ou null se desconectada.
+   */
   getClient(deviceId) {
     const clientData = this.clients[deviceId];
     if (clientData && clientData.instance && clientData.isReady) {
@@ -58,6 +77,9 @@ class WhatsappManager {
     return null;
   }
 
+  /**
+   * Inicializa um novo client WhatsApp (ou reutiliza existente) para o device informado.
+   */
   initializeClient(deviceId, empresaId) {
     if (this.clients[deviceId]) {
       console.log(`Cliente ${deviceId} já está inicializando ou conectado.`);
@@ -282,6 +304,9 @@ class WhatsappManager {
     });
   }
 
+  /**
+   * Destroi client ativo e remove listeners/cache mantendo cache customName.
+   */
   async disconnectClient(deviceId) {
     const clientData = this.clients[deviceId];
     if (clientData && clientData.instance) {
@@ -330,6 +355,9 @@ class WhatsappManager {
     }
   }
 
+  /**
+   * Executa sincronização de chats/mensagens com suporte a pausa cancelamento.
+   */
   async syncChats(deviceId, empresaId, taskId = null, syncTasks = null) {
     console.log("\n\n");
     console.log("*****************************************************************");
@@ -608,6 +636,9 @@ class WhatsappManager {
   // =================================================================
   // ADICIONADO: Método para enviar mensagens
   // =================================================================
+  /**
+   * Envia texto simples para o chat informado usando cliente conectado.
+   */
   async sendMessage(deviceId, chatId, text) {
     const client = this.getClient(deviceId);
 
@@ -664,6 +695,9 @@ class WhatsappManager {
   // =================================================================
   // ADICIONADO: Método para enviar mídias (imagens, vídeos, documentos)
   // =================================================================
+  /**
+   * Transmite arquivo/mídia armazenada em disco para um contato ou grupo.
+   */
   async sendMedia(deviceId, chatId, filePath, filename, mimetype) {
     const client = this.getClient(deviceId);
 
@@ -696,6 +730,9 @@ class WhatsappManager {
       throw new Error('Não foi possível enviar a mídia. Verifique o arquivo e o número de destino.');
     }
   }
+  /**
+   * Ajusta estado de digitação/gravação exposto no chat.
+   */
   async setChatState(deviceId, chatId, state) {
     const client = this.getClient(deviceId);
     if (!client) {
@@ -726,6 +763,9 @@ class WhatsappManager {
   // =================================================================
   // ADICIONADO: Método para sincronizar uma única conversa sob demanda
   // =================================================================
+  /**
+   * Força sincronização completa de um chat específico.
+   */
   async syncSingleChat(client, deviceId, chatId, empresaId) {
     if (!client) {
       throw new Error('Cliente WhatsApp não está conectado.');
@@ -814,6 +854,9 @@ class WhatsappManager {
     }
   }
 
+  /**
+   * Broadcasta via WebSocket que atendimento foi tabulado.
+   */
   notifyChatTabulated(chatId, empresaId) {
     if (this.wss) {
         this.wss.clients.forEach(wsClient => {
@@ -828,6 +871,9 @@ class WhatsappManager {
     }
   }
 
+  /**
+   * Informa ao frontend que um chat voltou para a fila de atendimento.
+   */
   notifyChatReturned(contact, empresaId) {
     if (!this.wss) {
       return;
@@ -842,15 +888,24 @@ class WhatsappManager {
     });
   }
 
+  /**
+   * Monta chave única usada para cachear nomes customizados.
+   */
   getCustomNameKey(chatId, empresaId) {
     return `${empresaId || '0'}:${chatId}`;
   }
 
+  /**
+   * Guarda nome customizado associado a um chat/empresa na memória.
+   */
   cacheCustomName(chatId, empresaId, customName) {
     const key = this.getCustomNameKey(chatId, empresaId);
     this.customNameCache.set(key, customName || null);
   }
 
+  /**
+   * Recupera nome customizado do cache (undefined quando inexistente).
+   */
   getCachedCustomName(chatId, empresaId) {
     const key = this.getCustomNameKey(chatId, empresaId);
     if (this.customNameCache.has(key)) {
@@ -859,6 +914,9 @@ class WhatsappManager {
     return undefined;
   }
 
+  /**
+   * Obtém nome customizado consultando banco apenas se cache falhar.
+   */
   async getOrLoadCustomName(chatId, empresaId) {
     const cached = this.getCachedCustomName(chatId, empresaId);
     if (cached !== undefined) {
@@ -874,6 +932,9 @@ class WhatsappManager {
     return customName;
   }
 
+  /**
+   * Envia atualização incremental de conversa para todos dashboards da empresa.
+   */
   broadcastConversationUpdate(empresaId, payload) {
     if (!this.wss || !empresaId || !payload || !payload.chatId) {
       return;
@@ -889,6 +950,9 @@ class WhatsappManager {
     });
   }
 
+  /**
+   * Alterna estado de arquivamento da conversa no WhatsApp e no banco.
+   */
   async setChatArchiveState(deviceId, chatId, shouldArchive, empresaId) {
     const client = this.getClient(deviceId);
     const resolvedEmpresa = empresaId || this.clients[deviceId]?.empresaId;
@@ -916,6 +980,9 @@ class WhatsappManager {
     return { update };
   }
 
+  /**
+   * Bloqueia ou desbloqueia contato (não grupos) e notifica UI.
+   */
   async setContactBlockState(deviceId, chatId, shouldBlock, empresaId) {
     const client = this.getClient(deviceId);
     const resolvedEmpresa = empresaId || this.clients[deviceId]?.empresaId;
@@ -944,6 +1011,9 @@ class WhatsappManager {
     return { update };
   }
 
+  /**
+   * Atualiza nome exibido do chat preservando fallback do WhatsApp.
+   */
   async renameConversation(deviceId, chatId, newName, empresaId, conversationRecord = null) {
     const client = this.getClient(deviceId);
     const resolvedEmpresa = empresaId || this.clients[deviceId]?.empresaId;

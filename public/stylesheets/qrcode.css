@@ -1,3 +1,4 @@
+/* Layout para exibição dos QR Codes de pareamento. */
 .qrcode-container {
   display: flex;
   justify-content: center;

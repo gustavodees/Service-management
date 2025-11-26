@@ -1,3 +1,8 @@
+/**
+ * Entry point do servidor Express + WebSocket. Concentra middlewares globais,
+ * inicializa integrações (WhatsApp/chatbot), organiza rotas e expõe o servidor
+ * HTTP/WebSocket utilizado pelo painel.
+ */
 require('dotenv').config();
 
 var createError = require('http-errors');

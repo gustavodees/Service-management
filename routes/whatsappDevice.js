@@ -1,3 +1,6 @@
+/**
+ * Cadastro de dispositivos WhatsApp conectados à plataforma (QR, status, número etc.).
+ */
 const { DataTypes } = require('sequelize');
 const sequelizeUser = require('./banco');
 

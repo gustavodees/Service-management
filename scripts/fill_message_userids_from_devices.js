@@ -1,3 +1,7 @@
+/**
+ * Script utilitário que retro preenche `userId` em mensagens e mídias usando o
+ * relacionamento registrado nos dispositivos. Execute via `node scripts/fill...`.
+ */
 const path = require('path');
 const sequelize = require('../routes/banco');
 const { Op } = require('sequelize');
@@ -6,6 +10,9 @@ const WhatsappMedia = require('../routes/WhatsappMedia');
 const ChatbotDevice = require('../routes/chatbotDevice');
 const WhatsappDevice = require('../routes/whatsappDevice');
 
+/**
+ * Obtém o usuário dono do device consultando tabelas de chatbot e WhatsApp.
+ */
 async function findUserIdForDevice(deviceId) {
   if (!deviceId) return null;
   let dev = await ChatbotDevice.findOne({ where: { device_id: deviceId } });
@@ -15,6 +22,9 @@ async function findUserIdForDevice(deviceId) {
   return null;
 }
 
+/**
+ * Executa a varredura dos devices pendentes e atualiza as tabelas.
+ */
 async function run() {
   console.log('Conectando ao DB...');
   await sequelize.authenticate();

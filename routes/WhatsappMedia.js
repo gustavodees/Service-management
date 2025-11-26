@@ -1,3 +1,6 @@
+/**
+ * Armazena payloads base64 e metadados de mídia vinculados às mensagens WhatsApp.
+ */
 const { DataTypes } = require('sequelize');
 const sequelize = require('./banco');
 

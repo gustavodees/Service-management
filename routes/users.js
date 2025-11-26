@@ -1,3 +1,7 @@
+/**
+ * Rotas destinadas às operações diárias de usuários autenticados: disparo em massa,
+ * atendimento em tempo real, tabulação, dashboards e gestão de usuários.
+ */
 const express = require('express');
 const router = express.Router();
 const whatsappManager = require('./whatsappManager'); // CORREÇÃO: Usar o gerenciador correto
@@ -14,6 +18,10 @@ const sequelizeUser = require('./banco'); // para transações
 const chatbotModule = require('./chatbot'); // <<< ADICIONADO
 // === FIM ADIÇÃO ===
 
+/**
+ * Retorna usuários que podem ser selecionados em gráficos/impersonações, com filtros
+ * baseados no escopo do admin autenticado.
+ */
 async function getSelectableUsers(sessionUser) {
   if (!sessionUser || !['admin', 'super_admin'].includes(sessionUser.tipo)) {
     return [];
@@ -34,12 +42,12 @@ async function getSelectableUsers(sessionUser) {
   });
 }
 
-/* GET users listing. */
+/** GET /users */
 router.get('/', verificaAutenticacao, function(req, res, next) {
   res.send('respond with a resource');
 });
 
-/* GET Desparo de mensagens page. */
+/** GET /users/disparar */
 router.get('/disparar', verificaAutenticacao, function(req, res, next) {
   res.render('desparaWhats', { 
     title: 'Disparo de Mensagens - Sistema Service',
@@ -51,11 +59,17 @@ router.get('/disparar', verificaAutenticacao, function(req, res, next) {
 // MELHORIA: Função para criar um atraso aleatório entre os envios.
 // Isso simula um comportamento mais humano e reduz o risco de banimento.
 // =================================================================
+/**
+ * Simula um atraso humano entre envios para reduzir risco de bloqueios.
+ */
 function randomDelay(minSeconds, maxSeconds) {
   const delay = Math.random() * (maxSeconds - minSeconds) + minSeconds;
   return new Promise(resolve => setTimeout(resolve, delay * 1000));
 }
-/* POST para enviar mensagens em lote */
+/**
+ * POST /users/despara/enviar
+ * Executa disparo em massa (WhatsApp/Chatbot) aplicando delays e logs.
+ */
 router.post('/despara/enviar', verificaAutenticacao, async (req, res) => {
   try {
     const { numeros, mensagem, deviceId } = req.body;
@@ -156,7 +170,7 @@ router.post('/despara/enviar', verificaAutenticacao, async (req, res) => {
   }
 });
 
-/* GET Atendimento page. */
+/** GET /users/atendimento */
 router.get('/atendimento', verificaAutenticacao, function(req, res, next) {
   // Se o admin estava visualizando o atendimento de um funcionário, sair do modo de impersonação
   if (req.session && req.session.impersonateUserId) {
@@ -168,7 +182,7 @@ router.get('/atendimento', verificaAutenticacao, function(req, res, next) {
   });
 });
 
-/* GET Atendimento page com usuário específico. */
+/** GET /users/atendimento/:id */
 router.get('/atendimento/:id', verificaAutenticacao, async (req, res) => {
   try {
     if (!req.session.usuario || req.session.usuario.tipo !== 'admin') {
@@ -198,7 +212,7 @@ router.get('/atendimento/:id', verificaAutenticacao, async (req, res) => {
   }
 });
 
-/* GET Tabulação page. */
+/** GET /users/tabulacao */
 router.get('/tabulacao', verificaAutenticacao, function(req, res, next) {
   // Se o admin estava visualizando a tabulação de um funcionário, sair do modo de impersonação
   if (req.session && req.session.impersonateUserId) {
@@ -210,7 +224,7 @@ router.get('/tabulacao', verificaAutenticacao, function(req, res, next) {
   });
 });
 
-/* GET Tabulação page com usuário específico (admin impersona) */
+/** GET /users/tabulacao/:id */
 router.get('/tabulacao/:id', verificaAutenticacao, async (req, res) => {
   try {
     if (!req.session.usuario || !['admin', 'super_admin'].includes(req.session.usuario.tipo)) {
@@ -244,7 +258,7 @@ router.get('/tabulacao/:id', verificaAutenticacao, async (req, res) => {
   }
 });
 
-/* GET Gráfico page. */
+/** GET /users/grafico */
 router.get('/grafico', verificaAutenticacao, async function(req, res) {
   if (req.session && req.session.impersonateUserId) {
     delete req.session.impersonateUserId;
@@ -270,7 +284,7 @@ router.get('/grafico', verificaAutenticacao, async function(req, res) {
   });
 });
 
-/* GET Gráfico para usuário específico (admin visualiza outro usuário) */
+/** GET /users/grafico/:id */
 router.get('/grafico/:id', verificaAutenticacao, async (req, res) => {
   try {
     if (!req.session.usuario || !['admin', 'super_admin'].includes(req.session.usuario.tipo)) {
@@ -313,7 +327,10 @@ router.get('/grafico/:id', verificaAutenticacao, async (req, res) => {
   }
 });
 
-/* NOVO: endpoint para fornecer dados do gráfico (por usuário ou equipe) */
+/**
+ * GET /users/grafico-data
+ * Retorna dados agregados para gráficos por usuário/equipe.
+ */
 router.get('/grafico-data', verificaAutenticacao, async (req, res) => {
   try {
     const scope = req.query.scope || null;
@@ -369,7 +386,10 @@ router.get('/grafico-data', verificaAutenticacao, async (req, res) => {
   }
 });
 
-/* DELETE Usuário (remove usuário + tabulações + devices) */
+/**
+ * DELETE /users/deletar-usuario/:id
+ * Executa exclusão de usuário e dependências em transação Sequelize.
+ */
 router.delete('/deletar-usuario/:id', verificaAutenticacao, async (req, res) => {
   // Somente admins podem deletar (front já esconde botão, mas validar aqui também)
   if (!req.session || !req.session.usuario || req.session.usuario.tipo !== 'admin') {

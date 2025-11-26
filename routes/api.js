@@ -1,3 +1,7 @@
+/**
+ * API REST utilizada pela interface web para contatos, tabulação, mídias e ações rápidas.
+ * Todas as rotas exigem autenticação de sessão.
+ */
 const express = require('express');
 const router = express.Router();
 const verificaAutenticacao = require('./verificaAutenticacao');

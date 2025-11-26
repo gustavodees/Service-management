@@ -1,3 +1,7 @@
+/**
+ * Entidade de usuários (admins, operadores, super_admin) com vínculo à empresa
+ * e credenciais utilizadas em toda a plataforma.
+ */
 const { DataTypes } = require('sequelize');
 const sequelizeUser = require('./banco');
 

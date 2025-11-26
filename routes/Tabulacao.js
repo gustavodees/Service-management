@@ -1,3 +1,7 @@
+/**
+ * Tabela de tabulações (classificações pós-atendimento) utilizadas pelos dashboards
+ * e pela régua de acompanhamento comercial.
+ */
 const { DataTypes } = require('sequelize');
 const sequelizeUser = require('./banco');
 
